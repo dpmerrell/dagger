@@ -1,7 +1,13 @@
 # dagger
 
-A minimalist workflow manager.
+A minimalist DAG workflow engine.
 
-Can be easily extended for new computing platforms!
+Build a `Workflow` of `Task`s that pass `Datum`s to each other.
+And then run it with a `Controller`.
 
-
+Designed to be as generic as possible, but easily extended to new platforms and environments.
+For example, you could extend `dagger` to run workflows...
+* ...of python functions on your local host
+* ...of shell scripts on a cluster
+* ...of containerized services on a cloud platform
+* etc.
