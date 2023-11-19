@@ -1,4 +1,1 @@
 # Do nothing for now
-
-from base import *
-
