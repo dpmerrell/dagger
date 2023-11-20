@@ -33,7 +33,7 @@ class Controller:
         raise NotImplementedError(f"Need to implement `run_workflow` method for {type(self)}")
 
         # Run the simplest possible DAG traversal algorithm that respects resource constraints.
-            # Assumption: when we call `run_task()` for a Task, then that task runs in the background.
+            # Assumption: when we call `start_task()` for a Task, then that task runs in the background.
             # Assumption: we maintain a list of running tasks
             # Assumption: we can periodically check whether tasks are completed
             # Assumption: we also maintain a list of runnable tasks (i.e., tasks whose inputs are ready)

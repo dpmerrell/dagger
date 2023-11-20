@@ -13,22 +13,23 @@ import uuid
         * outputs (a dictionary string -> Datum uid)
         * uid (a unique identifier; for now, a UUID)
         * name (a string)
+        * resources (
         * (inheritors may have other attributes as well)
     
     A Task has the following methods:
         * is_current(): returns a Bool indicating whether
                         the task's outputs are up-to-date
-        * run_task(): runs the task. In inheritors, this may include 
-                      setup and teardown logic; restarts; etc.
-        * kill_task(): kills the task. In inheritors,
-                       this would perform the interrupt
+        * start_task(): starts the task, which runs in the background until 
+                        (A) completion or (B) failure. 
+                        In inheritors, this may include setup and teardown logic; restarts; etc.
+        * kill_task(): kills the task. In inheritors, this would perform the interrupt
                        and any teardown logic
         * is_running(): returns a Bool indicating whether the task
                         is running.
 """
 class Task:
     
-    def __init__(self, inputs, outputs, name="", **kwargs):
+    def __init__(self, inputs, outputs, name="", resources={}, **kwargs):
 
         self.inputs = inputs
         self.outputs = outputs
@@ -42,14 +43,14 @@ class Task:
     def is_current(self):
         raise NotImplementedError(f"Need to implement `is_current` method for {type(self)}")
 
-    def run_task(self, **kwargs):
-        raise NotImplementedError(f"Need to implement `run_task` method for {type(self)}")
+    def start_task(self, **kwargs):
+        raise NotImplementedError(f"Need to implement `start_task` method for {type(self)}")
 
     def kill_task(self, **kwargs):
-        raise NotImplementedError(f"Need to implement `kill_task` method for {type(self)")
+        raise NotImplementedError(f"Need to implement `kill_task` method for {type(self)}")
 
     def is_running(self):
-        raise NotImplementedError(f"Need to implement `is_running` method for {type(self)")
+        raise NotImplementedError(f"Need to implement `is_running` method for {type(self)}")
        
 
 """
@@ -66,13 +67,13 @@ class DaggerStartTask(Task):
                                        name="__DAGGER_START__", 
                                        uid="__DAGGER_START__")
 
-    def self.is_current(self):
+    def is_current(self):
         return True
 
-    def self.run_task(self, **kwargs):
+    def start_task(self, **kwargs):
         return
 
-    def self.kill_task(self, **kwargs):
+    def kill_task(self, **kwargs):
         return
 
     def is_running(self):
@@ -93,14 +94,14 @@ class DaggerEndTask(Task):
                                    name="__DAGGER_END__", 
                                    uid="__DAGGER_END__")
 
-    def self.is_current(self):
+    def is_current(self):
         return False  # Will always need to check the DAG outputs,
                       # and the tasks that create them.
 
-    def self.run_task(self, **kwargs):
+    def start_task(self, **kwargs):
         return
 
-    def self.kill_task(self, **kwargs):
+    def kill_task(self, **kwargs):
         return
 
     def is_running(self):
