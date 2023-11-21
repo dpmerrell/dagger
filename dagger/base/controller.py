@@ -3,10 +3,11 @@
     David Merrell (c) 2023
 """
 
+from task import DAGGER_START_FLAG, DAGGER_END_FLAG
 
 """
     A Controller manages the execution of a workflow.
-    It performs all of the job scheduling and enforces
+    It performs all of the job scheduling, subject to
     resource constraints (if any).
 
     A Controller should have the following attributes:
@@ -14,8 +15,8 @@
         * resources
     
     A Controller must have the following methods:
-        * assess_state
-        * run_workflow
+        * sync_dag
+        * run
 """
 class Controller:
 
@@ -23,13 +24,32 @@ class Controller:
 
         self.dag = dag
         self.resources = resources
-
         return
 
-    def assess_state(self):
-        raise NotImplementedError(f"Need to implement `assess_state` method for {type(self)}")
+    """
+        Controller.sync_dag()
 
-    def run_workflow(self):
+        Traverse the DAG and partition its Tasks into
+        (1) completed, (2) ready, and (3) uncompleted.
+        In other words: inspect the tasks and data, and 
+        figure out which tasks need to run. 
+    """
+    def sync_dag(self):
+        dag = self.dag
+        cur_node = dag.tasks[]
+
+    def run(self):
+        raise NotImplementedError(f"Need to implement `run` method for {type(self)}")
+
+
+"""
+    A GreedyController runs a DAG in a greedy fashion.
+    That is, it maintains a list of runnable jobs and chooses
+    to run the most important of them (subject to available resources.) 
+"""
+class GreedyController(Controller):
+
+    def run(self):
         raise NotImplementedError(f"Need to implement `run_workflow` method for {type(self)}")
 
         # Run the simplest possible DAG traversal algorithm that respects resource constraints.
@@ -47,3 +67,4 @@ class Controller:
                 # When the task is no longer running, we return its resources to available_resources. 
                 
         # If we encounter a KeyBoardInterrupt, then kill all of the running tasks
+

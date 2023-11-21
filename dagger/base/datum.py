@@ -5,43 +5,36 @@
     Implementation of Datum class.
 """
 
+from uuid import uuid4
+
 """
-    A Datum represents an individual task input or output.
-    Inheritors may wrap, e.g., file paths, URLs, or 
+    A Datum is a lightweight placeholder 
+    representing an individual task input or output.
+    Inheritors may denote, e.g., file paths, URLs, or 
     arbitrary python objects.
 
     A Datum has the following attributes:
+        * dag: the DAG object containing this Datum.
+        * uid: UID of this Datum 
         * parent_uid: UID of the Task that outputs this Datum.
-        * _key:       A string (or other hashable object) representing
-                      the location of the data. 
-                      Generated automatically during DAG construction 
-                      and used to detect redundant tasks.
-                      **Should NOT be modified during DAG execution.**
-        * content:    Some object containing sufficient information to 
-                      (1) access the data and 
-                      (2) indicate that the data has been changed.
-                          E.g., may contain a file path and timestamp
 """
 class Datum:
 
-    def __init__(self, parent_uid, **kwargs):
+    def __init__(self, dag, parent_task):
 
-        self.parent_uid = parent_uid
-        self._key = self.generate_key(**kwargs) 
-        self.content = self.initiate_content(**kwargs)
+        self.dag = dag
+        self.uid = uuid4()
+        self.parent_id = parent_task.uid
 
         return
 
-    def generate_key(self, **kwargs):
-        raise NotImplementedError(f"Need to implement `generate_key` for {type(self)}")
-    
-    def initiate_content(self, **kwargs):
-        raise NotImplementedError(f"Need to implement `initiate_content` for {type(self)}")
+    def get_data(self):
+        return self.dag.data[self.uid]
 
-    def update_content(self, **kwargs):
-        raise NotImplementedError(f"Need to implement `update_content` for {type(self)}")
+    def set_data(self, data):
+        self.dag.data[self.uid] = data
 
-    def remove_content(self, **kwargs):
-        raise NotImplementedError(f"Need to implement `remove_content` for {type(self)}")
+    def is_up_to_date(self):
+        return self.dag.tasks[self.parent_uid].is_up_to_date()
 
 

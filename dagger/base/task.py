@@ -5,75 +5,96 @@
     Definition of Task base class
 """
 
-import uuid
+from uuid import uuid4
+
+DAGGER_START_FLAG = "__DAGGER_START__"
+DAGGER_END_FLAG = "__DAGGER_END__"
 
 """
     A Task has the following attributes:
-        * inputs (a dictionary string -> Datum uid)
-        * outputs (a dictionary string -> Datum uid)
-        * uid (a unique identifier; for now, a UUID)
-        * name (a string)
-        * resources (
+        * dag:       a pointer to the DAG containing this task
+        * inputs:    a dictionary: name -> Datum UID 
+        * outputs:   a dictionary: name -> Datum UID 
+        * uid:       a unique identifier; for now, a UUID4
+        * name:      a string (ONLY for human readability)
+        * resources: a dictionary of arbitrary resource requirements for this task
         * (inheritors may have other attributes as well)
     
     A Task has the following methods:
-        * is_current(): returns a Bool indicating whether
-                        the task's outputs are up-to-date
-        * start_task(): starts the task, which runs in the background until 
-                        (A) completion or (B) failure. 
-                        In inheritors, this may include setup and teardown logic; restarts; etc.
-        * kill_task(): kills the task. In inheritors, this would perform the interrupt
-                       and any teardown logic
-        * is_running(): returns a Bool indicating whether the task
-                        is running.
+        * is_up_to_date(): Returns a Bool indicating whether
+                           the task's outputs are up-to-date
+        * start():         Starts the task, which runs asynchronously until 
+                           (A) completion or (B) failure. 
+                           In inheritors, this may include setup and teardown logic; restarts; etc.
+        * kill():          Kills the task. In inheritors, this would perform the interrupt
+                           and any teardown logic
+        * is_running():    Returns a Bool indicating whether the task
+                           is running.
+        * get_input(name):  Get an input Datum from its name
+        * get_output(name): Get an output Datum from its name
+        * __getindex__(self, name): A convenience wrapper for get_output
 """
 class Task:
     
-    def __init__(self, inputs, outputs, name="", resources={}, **kwargs):
+    def __init__(self, dag, inputs, outputs, name="", resources={}, **kwargs):
 
         self.inputs = inputs
         self.outputs = outputs
+        self.uid = uuid4()
         self.name = name
-        self.uid = uuid.uuid4()
-        
+        self.resources = resources
+ 
         for k, v in kwargs.items():
             setattr(self, k, v)
         return
 
-    def is_current(self):
-        raise NotImplementedError(f"Need to implement `is_current` method for {type(self)}")
+    def is_up_to_date(self):
+        raise NotImplementedError(f"Need to implement `is_up_to_date` method for {type(self)}")
 
-    def start_task(self, **kwargs):
-        raise NotImplementedError(f"Need to implement `start_task` method for {type(self)}")
+    def start(self, **kwargs):
+        raise NotImplementedError(f"Need to implement `start` method for {type(self)}")
 
-    def kill_task(self, **kwargs):
-        raise NotImplementedError(f"Need to implement `kill_task` method for {type(self)}")
+    def kill(self, **kwargs):
+        raise NotImplementedError(f"Need to implement `kill` method for {type(self)}")
 
     def is_running(self):
         raise NotImplementedError(f"Need to implement `is_running` method for {type(self)}")
-       
+      
+    def get_input(self, name):
+        return self.dag.data[self.inputs[name]]
+
+    def get_output(self, name):
+        return self.dag.data[self.outputs[name]]
+
+    def __getitem__(self, output_name):
+        return self.get_output(output_name)
+
 
 """
     DaggerStartTask is a "dummy" task indicating the start of a DAG.
-    
+
+    **You shouldn't ever need to subclass this.** 
+
     All DAG inputs are _outputs_ of the DaggerStartTask.
 
     The DaggerStartTask always has a special name and uid: "__DAGGER_START__".
 """
 class DaggerStartTask(Task):
 
-    def __init__(self, dag_inputs={}):
-        super(self).__init__(self, {}, dag_inputs, 
-                                       name="__DAGGER_START__", 
-                                       uid="__DAGGER_START__")
-
-    def is_current(self):
-        return True
-
-    def start_task(self, **kwargs):
+    def __init__(self, dag, dag_inputs={}):
+        super(self).__init__(self, dag, {}, dag_inputs,
+                                            resources={}, 
+                                            name=DAGGER_START_FLAG, 
+                                            uid=DAGGER_START_FLAG)
         return
 
-    def kill_task(self, **kwargs):
+    def is_up_to_date(self):
+        return True
+
+    def start(self, **kwargs):
+        return
+
+    def kill(self, **kwargs):
         return
 
     def is_running(self):
@@ -83,25 +104,27 @@ class DaggerStartTask(Task):
 """
     DaggerEndTask is a "dummy" task indicating the end of a DAG.
     
+    **You shouldn't ever need to subclass this.** 
+
     The DaggerEndTask has no outputs; and its inputs are the final outputs of the DAG.
 
     The DaggerEndTask always has a special name and uid: "__DAGGER_END__".
 """
 class DaggerEndTask(Task):
 
-    def __init__(self, dag_outputs={}):
-        super(self).__init__(self, dag_outputs, {} 
-                                   name="__DAGGER_END__", 
-                                   uid="__DAGGER_END__")
+    def __init__(self, dag, dag_outputs={}):
+        super(self).__init__(self, dag, dag_outputs, {},
+                                   resources={},
+                                   name=DAGGER_END_FLAG, 
+                                   uid=DAGGER_END_FLAG)
 
-    def is_current(self):
-        return False  # Will always need to check the DAG outputs,
-                      # and the tasks that create them.
+    def is_up_to_date(self):
+        return False
 
-    def start_task(self, **kwargs):
+    def start(self, **kwargs):
         return
 
-    def kill_task(self, **kwargs):
+    def kill(self, **kwargs):
         return
 
     def is_running(self):
