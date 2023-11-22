@@ -5,10 +5,8 @@
     Definition of Task base class
 """
 
-from uuid import uuid4
+from util import generate_uid, DAGGER_START_FLAG, DAGGER_END_FLAG
 
-DAGGER_START_FLAG = "__DAGGER_START__"
-DAGGER_END_FLAG = "__DAGGER_END__"
 
 """
     A Task has the following attributes:
@@ -21,8 +19,6 @@ DAGGER_END_FLAG = "__DAGGER_END__"
         * (inheritors may have other attributes as well)
     
     A Task has the following methods:
-        * is_up_to_date(): Returns a Bool indicating whether
-                           the task's outputs are up-to-date
         * start():         Starts the task, which runs asynchronously until 
                            (A) completion or (B) failure. 
                            In inheritors, this may include setup and teardown logic; restarts; etc.
@@ -33,6 +29,9 @@ DAGGER_END_FLAG = "__DAGGER_END__"
         * get_input(name):  Get an input Datum from its name
         * get_output(name): Get an output Datum from its name
         * __getindex__(self, name): A convenience wrapper for get_output
+        * to_datum(obj):   Convert an object (typically a task output)
+                           into a Datum object
+        * get_parent_task_uids(self)
 """
 class Task:
     
@@ -40,7 +39,7 @@ class Task:
 
         self.inputs = inputs
         self.outputs = outputs
-        self.uid = uuid4()
+        self.uid = generate_uid()
         self.name = name
         self.resources = resources
  
@@ -48,8 +47,6 @@ class Task:
             setattr(self, k, v)
         return
 
-    def is_up_to_date(self):
-        raise NotImplementedError(f"Need to implement `is_up_to_date` method for {type(self)}")
 
     def start(self, **kwargs):
         raise NotImplementedError(f"Need to implement `start` method for {type(self)}")
@@ -69,6 +66,17 @@ class Task:
     def __getitem__(self, output_name):
         return self.get_output(output_name)
 
+    """
+        Get the set of tasks immediately upstream of this task.
+        More precisely: get the UIDs of tasks that generate the
+        inputs of this task.
+    """
+    def get_parent_task_uids(self):
+        parent_uids = set()
+        for ipt_uid in self.inputs.values():
+            parent_uids.add(self.dag.data[ipt_uid].parent_uid)
+        return parent_uids
+    
 
 """
     DaggerStartTask is a "dummy" task indicating the start of a DAG.
@@ -87,9 +95,6 @@ class DaggerStartTask(Task):
                                             name=DAGGER_START_FLAG, 
                                             uid=DAGGER_START_FLAG)
         return
-
-    def is_up_to_date(self):
-        return True
 
     def start(self, **kwargs):
         return
@@ -117,9 +122,6 @@ class DaggerEndTask(Task):
                                    resources={},
                                    name=DAGGER_END_FLAG, 
                                    uid=DAGGER_END_FLAG)
-
-    def is_up_to_date(self):
-        return False
 
     def start(self, **kwargs):
         return
