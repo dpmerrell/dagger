@@ -37,13 +37,14 @@ class Controller:
         In other words: inspect the tasks and data, and 
         figure out which tasks need to run. 
     """
-    def assess_state(self):
+    def assess_state(self, edgesets=None):
+
+        if edgesets is None:        
+            # Compute an edge-set representation of the DAG
+            edgesets = self.dag.compute_task_edgesets()
 
         # Sync the DAG's Datum objects
         self.dag.sync_data()
-
-        # Compute an edge-set representation of the DAG
-        edgesets = self.dag.compute_task_edgesets()
 
         # Traverse the DAG from the start, in a BFS fashion
         completed = set([DAGGER_START_FLAG])
@@ -75,6 +76,9 @@ class Controller:
                    
         return completed, ready 
         
+    def _restore_resources(self, available_resources, task):
+        for k in available_resources.keys():
+            available_resources[k] = available_resources[k] + task.resources[k] 
 
     def run(self):
         raise NotImplementedError(f"Need to implement `run` method for {type(self)}")
@@ -87,27 +91,60 @@ class Controller:
 """
 class GreedyController(Controller):
 
+    # Function that scores the priority of a task
+    # (larger values -> higher priority)
     priority_func = lambda task: 1
 
+    # Time between iterations of main loop (in seconds)
+    check_interval = 1
+
     """
-        Run the simplest possible DAG traversal algorithm that respects resource constraints.
+        Run a simple DAG traversal algorithm that respects resource constraints.
     """
     def run(self):
-        raise NotImplementedError(f"Need to implement `run` method for {type(self)}")
 
-            # Assumption: when we call `start_task()` for a Task, then that task runs in the background.
-            # Assumption: we maintain a list of running tasks
-            # Assumption: we can periodically check whether tasks are completed
-            # Assumption: we also maintain a list of runnable tasks (i.e., tasks whose inputs are ready)
-                # We select from this list of runnable tasks whenever adequate resources are available
-                # Greedily choose the largest task that fits within available_resources
-                    # If the list of running tasks is empty but none of the runnable jobs fit 
-                    # within resource constraints, choose from the runnable tasks but impose
-                    # the DAG's resource constraints on it. (Raise a warning?)
-            # Maintain a dictionary of *available_resources*. 
-                # When we run a task, we deduct the corresponding resources from available_resources.
-                # When the task is no longer running, we return its resources to available_resources. 
+        # Get an edge-set representation of the DAG.
+        # Figure out which tasks are completed, and which are ready to run.
+        edgesets = self.dag.compute_task_edgesets()
+        completed_tasks, ready_tasks = self.assess_state(edgesets=edgesets)
+
+        # Maintain a dictionary of available resources
+        available_resources = self.resources.copy()
+
+        # Maintain a set of running tasks
+        running_tasks = set()
+
+        try:
+            while len(ready_tasks) > 0:
+
+                # Find all running tasks that have finished
+                just_finished = set(uid for uid in running_tasks if not self.dag.tasks[uid].is_running())
+               
+                # Update the controller's workflow state accordingly 
+                for uid in just_finished:
+                    # Restore each of their resources to the Controller's resources
+                    self._restore_resources(available_resources, self.dag.tasks[uid])    
+                    # Remove each of them from running_tasks
+                    running_tasks.remove(uid)
+                    # Add each of them to completed_tasks
+                    completed_tasks.add(uid)
+
+                # Update the set of ready_tasks.
+                    # For each newly-completed task, inspect its children 
+                    # and figure out which ones are ready now.
                 
-        # If we encounter a KeyBoardInterrupt, then kill all of the running tasks
+                # Find the highest-priority ready_tasks that fit within resource constraints (if any exist).
+
+                # If any exist, then start them
+                    # Be sure to also (1) remove them from ready_tasks and 
+                    #                 (2) add them to running_tasks
+
+                # Otherwise, end this iteration 
+
+        except KeyBoardInterrupt:
+            for task in running_tasks:
+                task.kill() 
+
+
 
 
