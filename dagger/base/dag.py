@@ -3,7 +3,6 @@
     David Merrell (c) 2023
 """
 
-from dagger.base.task import DaggerStartTask, DaggerEndTask
 
 """
     A DAG object contains the (interconnected) Tasks and Datums.
@@ -11,53 +10,47 @@ from dagger.base.task import DaggerStartTask, DaggerEndTask
     A DAG has the following attributes:
         * tasks: a dictionary-like collection of Tasks, keyed by their UIDs
         * data:  a dictionary-like collection of Datum objects, keyed by their UIDs
+        * edgesets: a dictionary: task UIDs -> sets of task UIDs.
+                                  This is an alternative encoding of the DAG
+                                  (the Tasks themselves already store their parents),
+                                  much more convenient for certain algorithms.
     
     (These may or may not actually be python dictionaries; in inheritors,
      they could be any abstract hash table or key-value store.)
 
     A DAG has the following methods:
-        * _initialize_tasks_and_data
         * set_task
         * get_task
         * set_datum
         * get_datum
         * sync_data
-        * to_datum
+        * dag_input_to_datum
 
     Properly constructed, a DAG should have the following properties:
         * Every task is downstream of the DaggerStartTask
         * Every task is upstream of the DaggerEndTask
-        * 
 """
 class DAG:
 
     """
-    TODO: DAG CONSTRUCTION NEEDS MORE THOUGHT.
-          PROBABLY INITIALIZE EMPTY AND BUILD IT
-          UP THROUGH A MORE SOPHISTICATED PROCEDURE.
+        DAG(tasks, data)
+
+        This minimalist constructor will probably not be used
+        in practice. DAG construction will require some care, 
+        and will entail a somewhat more complex interface.
     """
-    def __init__(self, tasks, inputs={}, outputs={}):
+    def __init__(self, tasks, data):
 
-        self._initialize_tasks_and_data()
-
-        # Translate the DAG inputs into Datum objects
-        inputs = {k: self.to_datum(v) for k,v in inputs.items()}
-
-        # Add a start task
-        self.set_task(DaggerStartTask(self, dag_inputs=inputs
-                                     )
-                     )
-
-        for task in tasks:
-            self.add_task(task)
-
+        self.tasks = tasks
+        self.data = data
+        self.edgesets = self.compute_task_edgesets()
         return
 
     ####################################
     # These usually don't need to be 
     # modified by inheritors
     """
-        Add or modify a Task
+        Add (or update) a Task
     """
     def set_task(self, uid, task):
         self.tasks[uid] = task
@@ -88,6 +81,12 @@ class DAG:
             datum.sync()
 
     """
+        Sync the state for all Task objects in this DAG 
+    """
+    def sync_tasks(self):
+        for task in self.tasks.values():
+            task.sync_state()
+    """
         Create an edge-set representation of the tasks.
     """
     def compute_task_edgesets(self):
@@ -101,24 +100,13 @@ class DAG:
 
         return edgesets
 
-    ##############################################
-    # These NEED to be modified by inheritors
     """
-        _initialize_tasks_and_data(self)
-
-        Set up the DAG's `tasks` and `data` attributes.
-        They are initially empty.
-    """
-    def _initialize_tasks_and_data(self):
-        raise NotImplementedError(f"Need to implement `_initialize_tasks_and_data` for {type(self)}")
-
-    """
-        to_datum(self, dag_input)
+        dag_input_to_datum(self, dag_input)
 
         Translates a DAG input (e.g., a file path, URL, python object)
         into a Datum object.
     """
-    def to_datum(self, dag_input):
-        raise NotImplementedError(f"Need to implement `to_datum` for {type(self)}")
+    def dag_input_to_datum(self, dag_input):
+        raise NotImplementedError(f"Need to implement `dag_input_to_datum` for {type(self)}")
 
 

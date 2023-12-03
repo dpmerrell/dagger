@@ -2,11 +2,9 @@
     datum.py
     David Merrell (c) 2023
 
-    Implementation of Datum class.
+    Implementation of Datum base class.
 """
 
-from uuid import uuid4
-from util import min_timestamp, now_timestamp
 
 """
     A Datum is a lightweight placeholder 
@@ -18,21 +16,43 @@ from util import min_timestamp, now_timestamp
         * dag: the DAG object containing this Datum.
         * uid: UID of this Datum 
         * parent_uid: UID of the Task that outputs this Datum.
-        * timestamp: Timestamp of the most recent modification to the data. 
+    
+    Concrete implementations may also contain additional
+    state information about the data, necessary to assess the 
+    DAG's execution state. For example, a timestamp of the data's 
+    most recent modification.
 
     A Datum has the following methods:
-        * get_data
-        * set_data  (IMPORTANT: this should set the timestamp to `now_timestamp()`.)
-        * sync_timestamp
+        * get_data()         : access the underlying data
+        * set_data(obj)      : modify the underlying data
+        * sync()             : ensure any execution state is up-to-date
+        * compute_uid(): Return a string (or hash, or other object) UID such that
+                         two `Datum`s are considered redundant IFF their
+                         UIDs are identical. Mathematically, these UIDs amount to
+                         equivalence classes on the `Datum`s.
+                         `compute_uid()` is called during DAG compilation and should ONLY 
+                         rely on information available at DAG compilation.
 """
 class Datum:
 
-    def __init__(self, dag, parent_task):
-
+    """
+        Datum(dag, parent_task, name=None, **kwargs)
+    """
+    def __init__(self, dag, parent_task, 
+                       name=None, **kwargs):
+        
         self.dag = dag
-        self.uid = uuid4()
         self.parent_uid = parent_task.uid
-        self.timestamp = min_timestamp()
+
+        # Set the name to the class name by default        
+        self.name = name
+        if name is None:
+            self.name = type(self).__name__
+       
+        # Just do a setattr for any remaining kwargs 
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
         return
 
     def get_data(self):
@@ -42,15 +62,12 @@ class Datum:
         raise NotImplementedError()
 
     """
-        Check from an independent source whether the
-        timestamp needs to be updated;
-        and then update it if necessary.
-        For example: if the Datum represents a file, 
-        this would get the file's timestamp of latest
-        modification from the filesystem. For other
-        objects, this could be a do-nothing operation.
+        Sync the Datum's state from the underlying data.
     """
-    def sync_timestamp(self):
+    def sync(self):
+        raise NotImplementedError()
+
+    def compute_uid(self):
         raise NotImplementedError()
 
 
@@ -66,6 +83,6 @@ class NullDatum(Datum):
     def set_data(self):
         return
 
-    def sync_timestamp(self):
-        return # keep the min_timestamp default
+    def sync(self):
+        return 
 
