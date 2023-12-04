@@ -6,8 +6,8 @@
 from dagger.base.util import DAGGER_START_FLAG, DAGGER_END_FLAG
 from dagger.base.util import TaskState
 
-from heapq import heapify, heappop, heappush
 from collections import deque
+from bisect import insort
 
 """
     A Controller manages the execution of a workflow.
@@ -33,7 +33,6 @@ class Controller:
             setattr(self, k, v)
 
         return
-
 
     """
         Traverse the DAG and identify its (1) completed
@@ -74,6 +73,15 @@ class Controller:
                         ready.add(child_uid)  # Add it to the `ready` set
                    
         return completed, ready 
+    
+
+    """
+        Helper method that updates the available_resources
+        dictionary on starting a task.
+    """        
+    def _deduct_resources(self, available_resources, task):
+        for k in available_resources.keys():
+            available_resources[k] = available_resources[k] - task.resources[k] 
 
     """
         Helper method that updates the available_resources
@@ -82,6 +90,35 @@ class Controller:
     def _restore_resources(self, available_resources, task):
         for k in available_resources.keys():
             available_resources[k] = available_resources[k] + task.resources[k] 
+    
+    """
+        _constrain_task_resources(task)
+        
+        Update the Task such that its
+        requested resources respect the constraints
+        imposed by the controller.
+    """ 
+    def _constrain_task_resources(self, available_resources, task):
+        c_keys = self.resources.keys()
+        for t_k, t_v in task.resources.items():
+            if t_k in c_keys:
+                task.resources[t_k] = min(t_v, self.resources[t_k])
+        return
+
+    """
+        _check_task_resources(task)
+    
+        Return a bool indicating whether the 
+        task's resources fit in the GreedyController's 
+        available resources. 
+    """ 
+    def _check_task_resources(self, available_resources, task):
+        c_keys = self.resources.keys()
+        for t_k, t_v in task.resources.items():
+            if (t_k in c_keys) and (t_v > self.resources[t_k]):
+                return False
+        return True
+
 
     def run(self):
         raise NotImplementedError(f"Need to implement `run` method for {type(self)}")
@@ -95,7 +132,7 @@ class Controller:
 class GreedyController(Controller):
 
     # Function that scores the priority of a task
-    # (larger values -> higher priority)
+    # (smaller values -> higher priority; may be negative)
     priority_func = lambda task: 1
 
     # Time between iterations of main loop (in seconds)
@@ -112,8 +149,7 @@ class GreedyController(Controller):
         # Figure out which tasks have finished, and which are ready to run.
         # Attach a "priority" value to each of the ready tasks.
         complete_tasks, ready_tasks = self.assess_state(edgesets=edgesets)
-        ready_tasks = [(self.priority_func(t_uid), t_uid) for t_uid in ready_tasks]
-        heapify(ready_tasks)
+        ready_tasks = sorted([(self.priority_func(t_uid), t_uid) for t_uid in ready_tasks])
 
         # Maintain a dictionary of available resources
         available_resources = self.resources.copy()
@@ -150,27 +186,35 @@ class GreedyController(Controller):
                             # If all the child's parents are complete,
                             # then add it to the ready tasks!
                             if all(p in complete_tasks for p in child_task.get_parent_task_uids()):
-                                heappush(ready_tasks, (self.priority_func(child_task), child_uid))
+                                insort(ready_tasks, (self.priority_func(child_task), child_uid))
     
                 # Start as many ready_tasks as possible, given resource constraints.
                 # We use a greedy heuristic: iterate through the ready tasks,
-                # ordered by their priorities. (A knapsack algorithm might yield a more 
-                # principled solution, at greater computational expense.)
-                heap = ready_tasks[:]
-                while len(heap) > 0:
-                    (priority, ready_uid) = heappop(heap)
-                    ready_task = self.dag.tasks[task_uid]
+                # ordered by their priorities. (A knapsack algorithm would truly 
+                # solve this, but at much greater computational expense.)
+                started_idx = set()
+                for i, (priority, ready_uid) in enumerate(ready_tasks):
+                    ready_task = self.dag.tasks[ready_uid]
 
-                    # if len(running_tasks) == 0:
-                        # Constrain ready_task's resources to fit within the 
-                        # available resources. I.e., set each one to 
-                        # min(task's resource, available resource) 
+                    if len(running_tasks) == 0:
+                        # There are no running tasks, so *all* resources
+                        # should be available. In order to make any progress,
+                        # at least one task should be running. However, we may
+                        # need to constrain the  ready_task's resources to fit 
+                        # within the total available resources.
+                        self._constrain_task_resources(available_resources, ready_task)
 
                     # if the task's resources fit within available resources:
+                    if self._check_task_resources(available_resources, ready_task):
                         # Start the task!
-                            # Be sure to also (1) remove ready_uid from ready_tasks and 
-                            #                 (2) add ready_uid to running_tasks
-                    
+                        ready_task.start()
+                        self._deduct_resources(available_resources, ready_task)
+                        # Be sure to also (1) add ready_uid to running_tasks and 
+                        #                 (2) mark it for removal from ready_tasks
+                        running_tasks.add(ready_uid)
+                        started_idx.add(i)
+
+                ready_tasks = [t for t in ready_tasks if t not in started_idx]    
 
             # Wait for the next iteration
             sleep(self.loop_interval)    
@@ -178,5 +222,6 @@ class GreedyController(Controller):
         except KeyBoardInterrupt:
             for task in running_tasks:
                 task.kill() 
+
 
 
