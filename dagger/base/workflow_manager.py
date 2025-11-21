@@ -18,6 +18,7 @@
 """
 
 from abc import ABC, abstractmethod
+from dagger.base import TaskState
 
 def _terminate(task, visited):
     """
@@ -57,7 +58,7 @@ def _cycle_exists(task, ancestors, visited):
     # dependencies.
     ancestors.append(task.identifier)
     for d in task.dependencies:
-        if _cycle_exists(d, ancestors):
+        if _cycle_exists(d, ancestors, visited):
             return True
     # If none of the dependencies led to 
     # a cycle, remove this task from ancestors
@@ -116,7 +117,7 @@ def _enforce_incomplete(task, visited):
         return (task.state != TaskState.COMPLETE)
 
 
-class WorkflowManager:
+class WorkflowManager(ABC):
     """
     Class representing a workflow manager -- an object
     that executes a DAG of Tasks.
