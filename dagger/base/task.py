@@ -75,24 +75,62 @@ class Task(ABC):
         """
         return all((d.is_complete() for d in self.dependencies))
 
-    @abstractmethod
     def run(self):
         """
         Run the Task.
 
-        Must execute the intended computational work and then
-        update the Task's state to either 
-        TaskState.COMPLETE or TaskState.FAILED.
+        Executes the _run_logic() while (A) keeping the
+        Task's state up-to-date and (B) catching exceptions.
         """
-        raise NotImplementedError("Subclasses of Task must implement `run`")
+        self.state = TaskState.RUNNING
+        try:
+            self._run_logic()
+        except KeyboardInterrupt:
+            self.interrupt()
+        except Exception as e:
+            self.fail()
+            raise e
+        else:
+            # Assuming the function ran to completion
+            # and the outputs are valid, mark this 
+            # task as COMPLETE
+            self.state = TaskState.COMPLETE
 
-    @abstractmethod
-    def terminate(self):
+    def interrupt(self):
         """
-        Terminate execution of a RUNNING Task.
+        Interrupt execution of a RUNNING Task.
         
-        Must reset all the Task's internal data
-        such that it can be run again. Must
         also set self.state = TaskState.WAITING.
         """
-        raise NotImplementedError("Subclasses of Task must implement `terminate`")
+        self.state = TaskState.WAITING
+        self._interrupt_cleanup()
+
+    def fail(self):
+        """
+        Transition a RUNNING Task into a FAILED state.
+        """
+        self.state = TaskState.FAILED
+        self._fail_cleanup()
+
+    @abstractmethod
+    def _run_logic(self):
+        """
+        Core logic for executing the computational work.
+        """
+        raise NotImplementedError("Subclasses of Task must implement `_run_logic`")
+    
+    @abstractmethod
+    def _interrupt_cleanup(self):
+        """
+        Reset the Task's internal data
+        such that it can be attempted again.
+        """
+        raise NotImplementedError("Subclasses of Task must implement `interrupt_cleanup`")
+
+    @abstractmethod
+    def _fail_cleanup(self):
+        """
+        Perform any necessary cleanup after a Task fails.
+        """
+        raise NotImplementedError("Subclasses of Task must implement `fail_cleanup`")
+

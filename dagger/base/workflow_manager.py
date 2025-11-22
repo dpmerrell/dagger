@@ -11,7 +11,7 @@
     which represents the "final" task in the DAG.
 
     It executes the workflow via the `run()` method,
-    and terminates it via `terminate()`
+    and interrupts it via `interrupt()`
 
     It also has some convenience methods for assessing
     and validating the workflow. 
@@ -20,20 +20,20 @@
 from abc import ABC, abstractmethod
 from dagger.base import TaskState
 
-def _terminate(task, visited):
+def _interrupt(task, visited):
     """
     Traverse the DAG rooted at `task`
-    and terminate all of its RUNNING Tasks. 
+    and interrupt all of its RUNNING Tasks. 
     """
     if task.identifier in visited:
         return
 
     visited.add(task.identifier)
     if task.state == TaskState.RUNNING:
-        task.terminate()
+        task.interrupt()
 
     for d in task.dependencies:
-        _terminate(d, visited)
+        _interrupt(d, visited)
 
     return
 
@@ -141,7 +141,8 @@ class WorkflowManager(ABC):
         actually form a DAG. I.e., there
         are no circular dependencies.
         """
-        return not _cycle_exists(self.root_task, [], set())
+        if _cycle_exists(self.root_task, [], set()):
+            raise ValueError("Workflow rooted at {self.root_task.identifier} is not a DAG")
 
     @abstractmethod
     def run(self):
@@ -150,11 +151,11 @@ class WorkflowManager(ABC):
         """
         raise NotImplementedError("Subclasses of WorkflowManager must implement `run`")
 
-    def terminate(self):
+    def interrupt(self):
         """
-        Terminate all RUNNING tasks in the DAG.
+        Interrupt all RUNNING tasks in the DAG.
         """
-        _terminate(self.root_task, set()) 
+        _interrupt(self.root_task, set()) 
 
     def enforce_incomplete(self):
         """
