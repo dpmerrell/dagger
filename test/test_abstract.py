@@ -1,9 +1,9 @@
 
-from dagger.base import Task, TaskState, WorkflowManager
+from dagger.abstract import AbstractTask, TaskState, AbstractManager
 
-class MinimalTask(Task):
+class MinimalTask(AbstractTask):
     """
-    A minimal/do-nothing implementation of base.Task,
+    A minimal/do-nothing implementation of base.AbstractTask,
     strictly for testing purposes.
     """
     def _run_logic(self):
@@ -14,6 +14,9 @@ class MinimalTask(Task):
 
     def _fail_cleanup(self):
         return
+
+    def _check_complete_logic(self):
+        return False
 
 
 ####################################
@@ -50,6 +53,9 @@ class ExceptionTask(MinimalTask):
     def _fail_cleanup(self):
         self.failed = True
 
+    def _check_complete_logic(self):
+        return False
+
 def test_base_task_failure():
     # When we run this task, it should go into
     # a FAILED state
@@ -77,6 +83,10 @@ class InterruptTask(MinimalTask):
     def _interrupt_cleanup(self):
         self.interrupted = True
         return
+    
+    def _check_complete_logic(self):
+        return False
+
 
 def test_base_task_interrupt():
     # When we run this task, it should go back into
@@ -89,9 +99,9 @@ def test_base_task_interrupt():
 ###############################
 # WORKFLOW MANAGER
 ###############################
-class MinimalManager(WorkflowManager):
+class MinimalManager(AbstractManager):
     """
-    A minimal/do-nothing implementation of base.WorkflowManager,
+    A minimal/do-nothing implementation of base.AbstractManager,
     strictly for testing purposes.
     """
     def run(self):

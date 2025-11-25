@@ -3,7 +3,7 @@
     (c) David Merrell 2025
 
     Perhaps the simplest possible implementation
-    of dagger's WorkflowManager abstract base class.
+    of dagger's AbstractManager abstract base class.
 
     This isn't meant to be used in practice. Rather,
     it's a minimal working implementation that is used
@@ -15,12 +15,12 @@
     Tasks and then runs them one at a time.
 """
 
-from dagger.base import WorkflowManager
+from dagger.abstract import AbstractManager
 
 def _topological_sort(root_task):
     pass
 
-class SimpleManager(WorkflowManager):
+class SimpleManager(AbstractManager):
     
     def run(self):
         """

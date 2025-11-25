@@ -1,5 +1,5 @@
 # Do nothing for now
 
-import dagger.base
+import dagger.abstract
 import dagger.simple
 

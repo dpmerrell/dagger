@@ -3,7 +3,7 @@
     (c) David Merrell 2025
 
     Perhaps the simplest possible implementation
-    of dagger's Task abstract base class.
+    of dagger's AbstractTask abstract base class.
 
     This isn't meant to be used in practice. Rather,
     it's a minimal working implementation that is used
@@ -22,7 +22,7 @@
     in memory as attributes.
 """
 
-from dagger.base import Task
+from dagger.abstract import AbstractTask
 
 def _collect_dependencies(input_mapping):
     """
@@ -50,7 +50,7 @@ def _collect_dependencies(input_mapping):
     return dependencies
 
 
-class SimpleTask(Task):
+class SimpleTask(AbstractTask):
     
     def __init__(self, identifier, fn, input_mapping={}, output_names=set()):
 

@@ -2,7 +2,7 @@
     task.py
     (c) 2025 David Merrell
 
-    Implementation of the `Task` abstract base class.
+    Implementation of the `AbstractTask` abstract base class.
     Represents a unit of computational work.
     
     A Task exists in exactly one of four states:
@@ -22,11 +22,17 @@ class TaskState(Enum):
     A Task exists in exactly one of these states
     at any given time:
 
-                         --> COMPLETE
-                        / 
+           ------------> --> COMPLETE
+          /             / 
     WAITING --> RUNNING 
                         \
                          --> FAILED
+
+    WAITING can transition to RUNNING via .run()
+    WAITING can transition to COMPLETE via .check_complete()
+    RUNNING transitions to COMPLETE if .run() finishes
+    RUNNING transitions to FAILED if .run() raises an exception
+    RUNNING transitions to WAITING via .interrupt()
     """
     WAITING = 0
     RUNNING = 1
@@ -34,7 +40,7 @@ class TaskState(Enum):
     FAILED = 3
 
 
-class Task(ABC):
+class AbstractTask(ABC):
     """
     A class representing some unit of computational work
     to be carried out.
@@ -61,11 +67,50 @@ class Task(ABC):
         self.identifier = identifier
         self.dependencies = dependencies
         self.state = TaskState.WAITING
+    
+    @abstractmethod
+    def _run_logic(self):
+        """
+        Core logic for executing the computational work.
+        """
+        raise NotImplementedError("Subclasses of Task must implement `_run_logic`")
+    
+    @abstractmethod
+    def _interrupt_cleanup(self):
+        """
+        Reset the Task's internal data
+        such that it can be attempted again
+        after an interrupt.
+        """
+        raise NotImplementedError("Subclasses of Task must implement `_interrupt_cleanup`")
 
-    def is_complete(self):
+    @abstractmethod
+    def _fail_cleanup(self):
         """
-        Determine whether a task is complete
+        Perform any necessary cleanup after a Task fails.
         """
+        raise NotImplementedError("Subclasses of Task must implement `_fail_cleanup`")
+
+    @abstractmethod
+    def _check_complete_logic(self):
+        """
+        Check whether a task is complete.
+        Details will depend on the Task's 
+        specific implementation.
+        Returns a bool, and does not modify the Task's state.
+        """
+        raise NotImplementedError("Subclasses of Task must implement `_check_complete_logic`")
+
+    def check_complete(self):
+        """
+        Check whether a task is complete;
+        if it is, update the Task's state.
+        Return a bool indicating whether the 
+        task is complete.
+        """
+        if self._check_complete_logic():
+            self.state = TaskState.COMPLETE
+
         return self.state == TaskState.COMPLETE
 
     def is_ready(self):
@@ -73,7 +118,7 @@ class Task(ABC):
         A Task is ready to run iff all of its dependencies
         are complete
         """
-        return all((d.is_complete() for d in self.dependencies))
+        return all((d.state == TaskState.COMPLETE for d in self.dependencies))
 
     def run(self):
         """
@@ -111,26 +156,4 @@ class Task(ABC):
         """
         self.state = TaskState.FAILED
         self._fail_cleanup()
-
-    @abstractmethod
-    def _run_logic(self):
-        """
-        Core logic for executing the computational work.
-        """
-        raise NotImplementedError("Subclasses of Task must implement `_run_logic`")
-    
-    @abstractmethod
-    def _interrupt_cleanup(self):
-        """
-        Reset the Task's internal data
-        such that it can be attempted again.
-        """
-        raise NotImplementedError("Subclasses of Task must implement `interrupt_cleanup`")
-
-    @abstractmethod
-    def _fail_cleanup(self):
-        """
-        Perform any necessary cleanup after a Task fails.
-        """
-        raise NotImplementedError("Subclasses of Task must implement `fail_cleanup`")
 

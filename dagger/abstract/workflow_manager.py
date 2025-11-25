@@ -2,10 +2,9 @@
     workflow_manager.py
     (c) 2025 David Merrell
 
-    Implementation of a WorkflowManager abstract base class. 
-
-    Represents a workflow manager -- an object
-    that executes a DAG of Tasks.
+    Implementation of AbstractManager, an abstract base class
+    representing a workflow manager; an object that executes 
+    a DAG of Tasks.
 
     It accesses its DAG via a root Task (`root_task`) 
     which represents the "final" task in the DAG.
@@ -18,7 +17,7 @@
 """
 
 from abc import ABC, abstractmethod
-from dagger.base import TaskState
+from dagger.abstract import TaskState
 
 def _interrupt(task, visited):
     """
@@ -36,6 +35,7 @@ def _interrupt(task, visited):
         _interrupt(d, visited)
 
     return
+
 
 def _cycle_exists(task, ancestors, visited):
     """
@@ -117,7 +117,7 @@ def _enforce_incomplete(task, visited):
         return (task.state != TaskState.COMPLETE)
 
 
-class WorkflowManager(ABC):
+class AbstractManager(ABC):
     """
     Class representing a workflow manager -- an object
     that executes a DAG of Tasks.
@@ -135,6 +135,13 @@ class WorkflowManager(ABC):
 
         self.root_task = root_task
     
+    @abstractmethod
+    def run(self):
+        """
+        Execute the DAG of tasks terminating at `root_node`.
+        """
+        raise NotImplementedError("Subclasses of WorkflowManager must implement `run`")
+    
     def validate_dag(self):
         """
         Check that the tasks + dependencies
@@ -143,13 +150,6 @@ class WorkflowManager(ABC):
         """
         if _cycle_exists(self.root_task, [], set()):
             raise ValueError("Workflow rooted at {self.root_task.identifier} is not a DAG")
-
-    @abstractmethod
-    def run(self):
-        """
-        Execute the DAG of tasks terminating at `root_node`.
-        """
-        raise NotImplementedError("Subclasses of WorkflowManager must implement `run`")
 
     def interrupt(self):
         """
