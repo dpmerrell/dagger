@@ -28,8 +28,8 @@ class TaskState(Enum):
                         \
                          --> FAILED
 
-    WAITING can transition to RUNNING via .run()
-    WAITING can transition to COMPLETE via .check_complete()
+    WAITING may transition to COMPLETE via .check_complete()
+    WAITING transitions to RUNNING via .run()
     RUNNING transitions to COMPLETE if .run() finishes
     RUNNING transitions to FAILED if .run() raises an exception
     RUNNING transitions to WAITING via .interrupt()
@@ -110,7 +110,6 @@ class AbstractTask(ABC):
         """
         if self._check_complete_logic():
             self.state = TaskState.COMPLETE
-
         return self.state == TaskState.COMPLETE
 
     def is_ready(self):

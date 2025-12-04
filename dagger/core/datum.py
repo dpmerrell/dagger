@@ -21,17 +21,32 @@
            its outputs are initialized as empty Datums
         C) It may also happen for workflow input data, which 
            may be supplied to tasks as 'raw' Datums
-    2. Populated   (state=POPULATED; it contains a pointer to data which exists)
-        A) This usually happens when a Task is completed;
-           its output Datums are populated with the results
-           of the Task.
+    2. Populated   (state=POPULATED; it contains a pointer to data which may or may not exist)
+        A) Depending on the type of task, its output Datums
+           may be POPULATED on construction.
+           For example, tasks that may have data that
+           persists in files on disk between runs
         B) May also happen for workflow input data, which
            are constructed as Datums and then populated 
            as necessary
+    3. Available (state=AVAILABLE; the data referenced by the pointer is known to exist)
+        A) A Datum can only enter this state as a result of
+           a `check_available()` method call.
+    
+    EMPTY <--> POPULATED <--> AVAILABLE
 
-    Once the Datum is populated, a downstream Task may `collect` the data
+    A Datum goes through the following transitions:
+    * EMPTY -> POPULATED via `populate(...)`
+    * POPULATED -> EMPTY via `validate_format()`
+    * POPULATED -> AVAILABLE via `check_available()`
+    * AVAILABLE -> POPULATED via `clear()`
+
+    Once the Datum is AVAILABLE, a downstream Task may `collect` the data
     it points to, as an input. The `collect` logic depends on the type 
-    of the downstream Task, as well as the type of this Datum.
+    of the downstream Task, as well as the precise type of this Datum.
+    Which is an awkward part of this design: `collect` logic needs
+    to be defined for each pair (task, datum) of types that appears in
+    a workflow.
 """
 
 from abc import ABC, abstractmethod
@@ -43,10 +58,11 @@ class DatumState(Enum):
     A Datum can be in exactly one of the following states:
     * EMPTY
     * POPULATED
+    * AVAILABLE
     """
     EMPTY = 0
     POPULATED = 1
-
+    AVAILABLE = 2
 
 class AbstractDatum(ABC):
     """
@@ -59,14 +75,19 @@ class AbstractDatum(ABC):
     other tasks before that Task has even completed.
     """
 
-    def __init__(self):
+    def __init__(self, **kwargs):
         """
-        Construct an empty Datum.
-        """
-        self.data = None
-        self.state = DatumState.EMPTY
+        Construct a Datum. By default, it's empty. 
 
-    def populate(self, data):
+        But if an optional `pointer` kwarg is provided, 
+        the Datum is populated with that pointer.
+        """
+        self.state = DatumState.EMPTY
+        self.pointer = None
+        if "pointer" in kwargs.keys():
+            self.populate(kwargs["pointer"])
+
+    def populate(self, pointer):
         """
         Populate the Datum with sufficient information
         to retrieve the associated data. For some
@@ -74,61 +95,106 @@ class AbstractDatum(ABC):
         to the data; for other implementations this is
         a copy of the data itself.
         """
-        self.data = data
+        self.pointer = pointer
         self.state = DatumState.POPULATED 
-        self._validate_format()
-        self._data_exists()
+        self.validate_format()
     
-    def data_available(self):
+    def validate_format(self):
         """
-        Return a bool indicating whether the data pointed to
-        by this Datum is available for collection and use.
-        
+        Throw an exception if the Datum's `pointer`
+        is not well-formed. If it isn't, set the
+        state to EMPTY and the pointer to None
+        """
+        if not self._validate_format_logic():
+            self.pointer = None
+            self.state = DatumState.EMPTY
+            raise ValueError(f"Datum's pointer is not well-formed: {self.pointer}")
+    
+    @abstractmethod
+    def _validate_format_logic(self):
+        """
+        Return a bool indicating whether the Datum's
+        pointer is well-formed
+        """
+        raise NotImplementedError("Subclasses of `AbstractDatum` must implement `_validate_format_logic()`")
+
+    def check_available(self):
+        """
+        Check whether the Datum points to data that is 
+        available for use. If it is, then set
+        the state to AVAILABLE. Return a bool indicating
+        whether the data is available.
+
         I.e., the Datum is POPULATED and its `data` points to
         data that exists.
         """
-        if self.state != DatumState.POPULATED:
-            return False
+        if (self.state == DatumState.POPULATED) and self._check_available_logic():
+            self.state = DatumState.AVAILABLE
+            return True
         else:
-            return self._data_exists()
+            return False
+    
+    @abstractmethod
+    def _check_available_logic(self):
+        """
+        Return a bool indicating whether the Datum
+        points to data that exists.
+        """
+        raise NotImplementedError("Subclasses of `AbstractDatum` must implement `_check_available_logic()`")
+
+
+    def clear(self):
+        """
+        If the Datum is AVAILABLE, clear away any persistent data
+        and set its state to POPULATED.
+        """
+        if self.state == DatumState.AVAILABLE:
+            self._clear_logic()
+            self.state = DatumState.POPULATED
 
     @abstractmethod
-    def _validate_format(self):
+    def _clear_logic(self):
         """
-        Throw an exception if the Datum's `data`
-        member is not well-formed.
+        Clear away any persistent data pointed to by this Datum.
+        E.g., delete associated files, etc.
         """
-        raise NotImplementedError("Subclasses of `AbstractDatum` must implement `_validate_format`")
-
-    @abstractmethod
-    def _data_exists(self):
-        """
-        Return a bool indicating whether the 
-        data exists
-        """
-        raise NotImplementedError("Subclasses of `AbstractDatum` must implement `_data_exists`")
+        raise NotImplementedError("Subclasses of `AbstractDatum` must implement `_clear_logic()`")
 
 
 class MemoryDatum(AbstractDatum):
     """
-    A class representing a python object
-    stored in local memory.
+    A class representing a python object stored in local memory.
+
+    In this case, the Datum's `pointer` is simply the python object
+    (which is itself usually a pointer, for non-primitive types.)
     """
-    
-    def validate_data(self, data):
-        """
-        Populate the Datum with a python object.
 
-        In this case, `data` is simply the python object.
+    def _check_available_logic(self):
         """
-        self.data = data
+        Since the pointer is itself the data, 
+        it is available as long as the Datum
+        is POPULATED. The `check_available()` function
+        already checks this, so we return True always.
+        """
+        return True
 
-    def data_available(self, data):
+    def _validate_format_logic(self):
         """
-        Make sure the Datum is populated with a python object.
+        Since any python object (including `None`) is valid data
+        for this Datum, return True always.
+        """
+        return True
 
-        In this case, we're just checking whether 
+    def _clear_logic(self):
         """
+        For this Datum, there is no persistent data.
+        So we don't have to clear anything.
+        """
+        return
+
+import os
+from os import path
+from pathvalidate import is_valid_filepath
 
 class DiskDatum(AbstractDatum):
     """
@@ -136,13 +202,27 @@ class DiskDatum(AbstractDatum):
     in the local filesystem.
     """
 
-    def populate(self, data):
+    def _check_available_logic(self):
         """
-        Populate the Datum with a string representing
-        a path to a file.
+        Check whether a file exists
         """
-        if not isinstance(data, str):
-            raise ValueError("`DiskDatum` can only be `populate`d with str (representing a file path)")
-        self.data = data
+        return path.exists(self.pointer)
+
+    def _validate_format_logic(self):
+        """
+        Check whether the Datum's pointer is a string containing
+        a valid filepath
+        """
+        return is_valid_filepath(self.pointer)
+
+    def _clear_logic(self):
+        """
+        When this Datum is available, it points to a file
+        that exists. So we delete that file.
+        """
+        try:
+            os.remove(self.pointer)
+        except FileNotFoundError:
+            pass
 
 
