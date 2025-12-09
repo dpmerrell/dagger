@@ -11,6 +11,14 @@
     A Task may require other Tasks to be complete before
     it is allowed to run. These are called the task's
     `dependencies`.
+
+    Meta-comment: 
+    * Methods named '_is_...' are meant to return
+      a bool while doing practically no work.
+      Simply report state as it exists.
+    * Methods named '_verify...' are meant to 
+      do some work. They (A) check the underlying data,
+      (B) update the state, and then (C) return a bool.
 """
 
 from abc import ABC, abstractmethod
@@ -28,7 +36,7 @@ class TaskState(Enum):
                         \
                          --> FAILED
 
-    WAITING may transition to COMPLETE via .check_complete()
+    WAITING may transition to COMPLETE via .verify_complete()
     WAITING transitions to RUNNING via .run()
     RUNNING transitions to COMPLETE if .run() finishes
     RUNNING transitions to FAILED if .run() raises an exception
@@ -92,23 +100,23 @@ class AbstractTask(ABC):
         raise NotImplementedError("Subclasses of Task must implement `_fail_cleanup`")
 
     @abstractmethod
-    def _check_complete_logic(self):
+    def _verify_complete_logic(self):
         """
-        Check whether a task is complete.
+        Return a bool indicating whether a task is complete.
         Details will depend on the Task's 
         specific implementation.
         Returns a bool, and does not modify the Task's state.
         """
-        raise NotImplementedError("Subclasses of Task must implement `_check_complete_logic`")
+        raise NotImplementedError("Subclasses of Task must implement `_verify_complete`")
 
-    def check_complete(self):
+    def verify_complete(self):
         """
         Check whether a task is complete;
         if it is, update the Task's state.
         Return a bool indicating whether the 
         task is complete.
         """
-        if self._check_complete_logic():
+        if self._verify_complete_logic():
             self.state = TaskState.COMPLETE
         return self.state == TaskState.COMPLETE
 
@@ -124,7 +132,8 @@ class AbstractTask(ABC):
         Run the Task.
 
         Executes the _run_logic() while (A) keeping the
-        Task's state up-to-date and (B) catching exceptions.
+        Task's state up-to-date and (B) catching exceptions
+        and failures to complete.
         """
         self.state = TaskState.RUNNING
         try:
@@ -135,9 +144,6 @@ class AbstractTask(ABC):
             self.fail()
             raise e
         else:
-            # Assuming the function ran to completion
-            # and the outputs are valid, mark this 
-            # task as COMPLETE
             self.state = TaskState.COMPLETE
 
     def interrupt(self):
@@ -155,4 +161,5 @@ class AbstractTask(ABC):
         """
         self.state = TaskState.FAILED
         self._fail_cleanup()
+
 

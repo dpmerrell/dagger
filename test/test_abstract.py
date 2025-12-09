@@ -15,9 +15,11 @@ class MinimalTask(AbstractTask):
     def _fail_cleanup(self):
         return
 
-    def _check_complete_logic(self):
+    def _verify_complete_logic(self):
         return False
 
+    def _finished_successfully(self):
+        return True
 
 ####################################
 # TASK CONSTRUCTION AND COMPLETION
@@ -53,8 +55,11 @@ class ExceptionTask(MinimalTask):
     def _fail_cleanup(self):
         self.failed = True
 
-    def _check_complete_logic(self):
+    def _verify_complete_logic(self):
         return False
+
+    def _finished_successfully(self):
+        return True
 
 def test_base_task_failure():
     # When we run this task, it should go into
@@ -84,9 +89,11 @@ class InterruptTask(MinimalTask):
         self.interrupted = True
         return
     
-    def _check_complete_logic(self):
+    def _verify_complete(self):
         return False
 
+    def _finished_successfully(self):
+        return False
 
 def test_base_task_interrupt():
     # When we run this task, it should go back into
