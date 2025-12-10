@@ -2,7 +2,7 @@
     workflow_manager.py
     (c) 2025 David Merrell
 
-    Implementation of AbstractManager, an abstract base class
+    Definition of AbstractManager, an abstract base class
     representing a workflow manager; an object that executes 
     a DAG of Tasks.
 
@@ -18,6 +18,67 @@
 
 from abc import ABC, abstractmethod
 from dagger.abstract import TaskState
+
+class AbstractManager(ABC):
+    """
+    Class representing a workflow manager -- an object
+    that executes a DAG of Tasks.
+
+    It accesses its DAG via a root Task (`root_task`) 
+    which represents the "final" task in the DAG.
+
+    It executes the workflow via the `run()` method.
+
+    It also has some convenience methods for assessing 
+    the state of the workflow.
+    """
+
+    def __init__(self, root_task):
+
+        self.root_task = root_task
+    
+    @abstractmethod
+    def run(self):
+        """
+        Execute the DAG of tasks terminating at `root_node`.
+        """
+        raise NotImplementedError("Subclasses of WorkflowManager must implement `run`")
+    
+    def validate_dag(self):
+        """
+        Check that the tasks + dependencies
+        actually form a DAG. I.e., there
+        are no circular dependencies.
+        """
+        if _cycle_exists(self.root_task, [], set()):
+            raise ValueError("Workflow rooted at {self.root_task.identifier} is not a DAG")
+
+    def interrupt(self):
+        """
+        Interrupt all RUNNING tasks in the DAG.
+        """
+        _interrupt(self.root_task, set()) 
+
+    def enforce_incomplete(self):
+        """
+        Enforce the following rule:
+        
+        If a Task is not COMPLETE, then none
+        of its downstream Tasks can be COMPLETE.
+        
+        Any Tasks that are erroneously COMPLETE should
+        be changed to WAITING.
+        """
+        _enforce_incomplete(self.root_task, set())
+
+    def ready_tasks(self):
+        """
+        Return a list of the tasks in this
+        workflow that are ready to run
+        """
+        return _ready_tasks(self.root_task, set())
+
+
 
 def _interrupt(task, visited):
     """
@@ -115,65 +176,5 @@ def _enforce_incomplete(task, visited):
         return True
     else: # Everything complete upstream
         return (task.state != TaskState.COMPLETE)
-
-
-class AbstractManager(ABC):
-    """
-    Class representing a workflow manager -- an object
-    that executes a DAG of Tasks.
-
-    It accesses its DAG via a root Task (`root_task`) 
-    which represents the "final" task in the DAG.
-
-    It executes the workflow via the `run()` method.
-
-    It also has some convenience methods for assessing 
-    the state of the workflow.
-    """
-
-    def __init__(self, root_task):
-
-        self.root_task = root_task
-    
-    @abstractmethod
-    def run(self):
-        """
-        Execute the DAG of tasks terminating at `root_node`.
-        """
-        raise NotImplementedError("Subclasses of WorkflowManager must implement `run`")
-    
-    def validate_dag(self):
-        """
-        Check that the tasks + dependencies
-        actually form a DAG. I.e., there
-        are no circular dependencies.
-        """
-        if _cycle_exists(self.root_task, [], set()):
-            raise ValueError("Workflow rooted at {self.root_task.identifier} is not a DAG")
-
-    def interrupt(self):
-        """
-        Interrupt all RUNNING tasks in the DAG.
-        """
-        _interrupt(self.root_task, set()) 
-
-    def enforce_incomplete(self):
-        """
-        Enforce the following rule:
-        
-        If a Task is not COMPLETE, then none
-        of its downstream Tasks can be COMPLETE.
-        
-        Any Tasks that are erroneously COMPLETE should
-        be changed to WAITING.
-        """
-        _enforce_incomplete(self.root_task, set())
-
-    def ready_tasks(self):
-        """
-        Return a list of the tasks in this
-        workflow that are ready to run
-        """
-        return _ready_tasks(self.root_task, set())
 
 

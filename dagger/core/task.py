@@ -20,7 +20,6 @@
 
 from dagger.abstract import AbstractTask, TaskState
 from dagger.core import helpers
-
 from abc import abstractmethod
 
 class Task(AbstractTask):
@@ -45,9 +44,16 @@ class Task(AbstractTask):
     * some additional run() logic
         - _verify_outputs()
     * _verify_complete_logic()
+
+    It imposes the following abstractmethods on
+    its subclasses:
+    * _quickhash()
+    * _initialize_outputs()
+
     """
 
-    def __init__(self, identifier, inputs={}, outputs={}, dependencies=[]):
+    def __init__(self, identifier, inputs={}, outputs={}, dependencies=[],
+                                   resources={}):
         """
         Construct a Task with the given identifier,
         inputs, outputs, other dependencies, and resource requirements.
@@ -69,6 +75,9 @@ class Task(AbstractTask):
         
         # Compute this Task's quickhash
         self.quickhash = self._quickhash()
+
+        # Store this Task's resource requirements
+        self.resources = resources
 
         return
 
@@ -143,6 +152,5 @@ class Task(AbstractTask):
         these rules and be inexpensive to compute.
         """
         raise NotImplementedError("Subclasses of Task must implement `_quickhash()`")
-
 
 
