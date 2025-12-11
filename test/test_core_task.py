@@ -36,14 +36,16 @@ class MinimalCoreTask(Task):
     def _quickhash(self):
         return id(self)
 
-    def _run_logic(self):
-        # Run the function
+    def _execute(self):
+        # Collect inputs
         func_inputs = {k: v.pointer for k,v in self.inputs.items()}
+        # Run the function
         fn_outputs = self.function(**func_inputs)
 
         # Store the results in the output Datums
         for k in self.outputs:
             self.outputs[k].populate(fn_outputs[k])
+
 
 def test_core_task():
 

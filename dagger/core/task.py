@@ -81,20 +81,25 @@ class Task(AbstractTask):
 
         return
 
-    def run(self):
+    
+    def _run_logic(self):
         """
-        Run the Task.
-
-        Executes the _run_logic() while (A) keeping the
-        Task's state up-to-date and (B) catching exceptions
-        and failures to complete.
-
-        Also verifies that the outputs exist and are available.
+        Run the Task via `_run()`, followed by 
+        output verification (`_verify_outputs()`).
         """
-        super().run()
+        self._execute()
         if not self._verify_outputs():
             self.state = TaskState.FAILED
             raise RuntimeError("Task {self.identifier} ran, but is missing outputs.")
+
+
+    @abstractmethod
+    def _execute(self):
+        """
+        The Task's underlying execution logic. 
+        """
+        raise NotImplementedError("Subclasses of Task must implement `_execute()`")
+
 
     def _verify_complete_logic(self):
         """
