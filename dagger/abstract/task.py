@@ -21,6 +21,7 @@
       (B) update the state, and then (C) return a bool.
 """
 
+from dagger.abstract.communicator import DefaultCommunicator
 from abc import ABC, abstractmethod
 from enum import Enum
 
@@ -62,6 +63,11 @@ class AbstractTask(ABC):
 
     A task can be in exactly one of four states:
     waiting, running, complete, and failed.
+
+    A task generally contains some machinery for
+    communicating its state to the WorkflowManager.
+    But it's initialized with "do-nothing" default
+    communication machinery.
     """
 
     def __init__(self, identifier, dependencies=[]):
@@ -75,6 +81,7 @@ class AbstractTask(ABC):
         self.identifier = identifier
         self.dependencies = dependencies
         self.state = TaskState.WAITING
+        self.communicator = DefaultCommunicator()
     
     @abstractmethod
     def _run_logic(self):
@@ -109,6 +116,13 @@ class AbstractTask(ABC):
         """
         raise NotImplementedError("Subclasses of Task must implement `_verify_complete`")
 
+    def _update_state(self, new_state):
+        """
+        Assign a new value to self.state
+        """
+        self.state = new_state
+        self.communicator.report_state(self)
+
     def verify_complete(self):
         """
         Check whether a task is complete;
@@ -117,7 +131,7 @@ class AbstractTask(ABC):
         task is complete.
         """
         if self._verify_complete_logic():
-            self.state = TaskState.COMPLETE
+            self._update_state(TaskState.COMPLETE)
         return self.state == TaskState.COMPLETE
 
     def is_ready(self):
@@ -135,7 +149,7 @@ class AbstractTask(ABC):
         Task's state up-to-date and (B) catching exceptions
         and failures to complete.
         """
-        self.state = TaskState.RUNNING
+        self._update_state(TaskState.RUNNING)
         try:
             self._run_logic()
         except KeyboardInterrupt:
@@ -144,7 +158,7 @@ class AbstractTask(ABC):
             self.fail()
             raise e
         else:
-            self.state = TaskState.COMPLETE
+            self._update_state(TaskState.COMPLETE)
 
     def interrupt(self):
         """
@@ -152,14 +166,14 @@ class AbstractTask(ABC):
         
         also set self.state = TaskState.WAITING.
         """
-        self.state = TaskState.WAITING
+        self._update_state(TaskState.WAITING)
         self._interrupt_cleanup()
 
     def fail(self):
         """
         Transition a RUNNING Task into a FAILED state.
         """
-        self.state = TaskState.FAILED
+        self._update_state(TaskState.FAILED)
         self._fail_cleanup()
 
 
