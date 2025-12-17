@@ -128,7 +128,7 @@ def test_base_manager():
     m = MinimalManager(t)
 
     # Check basic properties of the constructed DAG
-    assert m.root_task.identifier == "t9"
+    assert m.end_task.identifier == "t9"
     try:
         m.validate_dag()
     except:
@@ -140,7 +140,7 @@ def test_base_manager():
     t8 = t.dependencies[0]
     assert t8.identifier == "t8"
     t8.state = TaskState.COMPLETE
-    m.enforce_incomplete()
+    m._enforce_incomplete()
     assert t8.state == TaskState.WAITING
 
     # Introduce a loop into the workflow.

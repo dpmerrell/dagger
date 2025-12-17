@@ -99,8 +99,11 @@ class WorkflowManager(AbstractManager):
         self.running[task]["submission"] = self.executor.submit(run_task)
         return
 
-    def running_task_state(self, task):
+    def _running_task_state(self, task):
         return self.running[task]["state_value"].value
+
+    def _running_task_output(self, task):
+        return self.running[task]["submission"].result()
 
     def run(self):
         """
