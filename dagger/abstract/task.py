@@ -177,3 +177,27 @@ class AbstractTask(ABC):
         self._fail_cleanup()
 
 
+class StartTask(AbstractTask):
+    """
+    This implementation of AbstractTask is an artificial,
+    'do-nothing' task that represents the start of a workflow. 
+
+    It's used 'under the hood' by the WorkflowManager;
+    the user does not ever need to construct one explicitly.
+    """
+
+    def __init__(self):
+        super().__init__(identifier="__START__")
+
+    def _run_logic(self):
+        return
+
+    def _interrupt_cleanup(self):
+        return
+
+    def _fail_cleanup(self):
+        return
+
+    def _verify_complete_logic(self):
+        return True
+

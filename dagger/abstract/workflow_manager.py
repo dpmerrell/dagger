@@ -37,15 +37,32 @@ class AbstractManager(ABC):
 
     def __init__(self, end_task):
 
+        # Validate that this is a DAG
         self.end_task = end_task
+        self.validate_dag()
 
-        # These data structures contain state for 
+        # Construct and store an adjacency list
+        # representation of the DAG
+        adj_list, start_task = construct_adj_list(end_task)
+        self.adj_list = adj_list
+        self.start_task = start_task
+
+        # These data structures contain state for
+        # the DAG execution algorithm (i.e., `run`).
         self.waiting = set()
         self.ready_tasks = []
         self.running = []
         self.failed = set()
         self.complete = set()
 
+    def validate_dag(self):
+        """
+        Check that the tasks + dependencies
+        actually form a DAG. I.e., there
+        are no circular dependencies.
+        """
+        if _rec_cycle_exists(self.end_task, [], set()):
+            raise ValueError("Workflow rooted at {self.end_task.identifier} is not a DAG")
 
     def run(self):
         """
@@ -58,11 +75,8 @@ class AbstractManager(ABC):
         (b) if there are any, update the 'ready' tasks
         (c) launch a subset of the 'ready' tasks
         """
-
-        # Initialize the ready_tasks
-        self._update_ready_tasks()
-        # Launch an initial set of tasks
-        self._launch_ready_tasks(self.ready_tasks)
+        # Initialize the running_tasks
+        self.running.append(self.start_task)
 
         # While there are 'running' tasks...
         while self.running:
@@ -85,19 +99,22 @@ class AbstractManager(ABC):
         of those that are COMPLETE or FAILED.
         """
         finished = [t for t in running_tasks \
-                    if self._running_task_state(t) in (TaskState.COMPLETE, 
+                    if self._get_running_task_state(t) in (TaskState.COMPLETE, 
                                                        TaskState.FAILED)]
         return finished
+
 
     def _wrapup_finished_tasks(self, finished_tasks):
         """
         Given a list of finished tasks, wrap them up
         and put them in the appropriate set (COMPLETE or FAILED).
+
+        Transitions: 'running' -> 'complete' OR 'failed'
         """
         # Ensure the finished tasks' states
         # are up-to-date.
         for t in finished_tasks:
-            t_s = self._running_task_state(t)
+            t_s = self._get_running_task_state(t)
             t.update_state(t_s)
             if t_s == TaskState.COMPLETE:
                 self.complete.add(t_s)
@@ -111,16 +128,39 @@ class AbstractManager(ABC):
             self.running.remove(t)
         return
 
+
+    def _update_ready_tasks(self, finished_tasks):
+        """
+        Given a list of recently finished tasks, update
+        the list of 'ready' tasks with their children
+
+        transitions: 'waiting' -> 'ready'
+        """
+        # Whenever a finished task has a child whose
+        # parents are all COMPLETE, then move the
+        # child to the `ready` list.
+        for ft in finished_tasks:
+            children = self.adj_list[ft]
+            for c in children:
+                parents = c.dependencies
+                if all((p in self.complete for p in parents)):
+                    self.ready.append(c)
+                    self.waiting.remove(c)
+        
+
     def _launch_ready_tasks(self, ready_tasks):
         """
         Given a list of ready tasks, choose
         a subset of them and launch them.
+
+        transitions: 'ready' -> 'running'
         """
         chosen_tasks = self._choose_tasks(ready_tasks)
         for task in chosen_tasks:
             self.ready_tasks.remove(task)
             self._launch_task(task)
             self.running.append(task)
+
 
     @abstractmethod
     def _launch_task(self, task):
@@ -143,22 +183,22 @@ class AbstractManager(ABC):
         raise NotImplementedError("Subclasses of `AbstractManager` must implement `_wrapup_task()`")
         
     @abstractmethod
-    def _running_task_state(self, task):
+    def _get_running_task_state(self, task):
         """
         Get the state of a running task.
         For nontrivial settings, this involves
         using Communicators etc.
         """
-        raise NotImplementedError("Subclasses of `AbstractManager` must implement `_running_task_state()`")
+        raise NotImplementedError("Subclasses of `AbstractManager` must implement `_get_running_task_state()`")
 
     @abstractmethod
-    def _running_task_output(self, task):
+    def _get_running_task_output(self, task):
         """
-        Get the state of a running task.
+        Get the output of a running task (assuming it's complete).
         For nontrivial settings, this involves some
         additional machinery beyond Task.
         """
-        raise NotImplementedError("Subclasses of `AbstractManager` must implement `_running_task_output()`")
+        raise NotImplementedError("Subclasses of `AbstractManager` must implement `_get_running_task_output()`")
         
     @abstractmethod
     def _choose_tasks(self, ready_tasks):
@@ -169,62 +209,12 @@ class AbstractManager(ABC):
         raise NotImplementedError("Subclasses of AbstractManager must define `_choose_tasks()`")
 
     @abstractmethod
-    def _update_ready_tasks(self):
-        pass
-
-    @abstractmethod
     def interrupt(self):
         """
         Interrupt all RUNNING tasks in the DAG.
         """
         raise NotImplementedError("Subclasses of AbstractManager must implement `interrupt`")
 
-    def validate_dag(self):
-        """
-        Check that the tasks + dependencies
-        actually form a DAG. I.e., there
-        are no circular dependencies.
-        """
-        if _rec_cycle_exists(self.end_task, [], set()):
-            raise ValueError("Workflow rooted at {self.end_task.identifier} is not a DAG")
-
-    def _enforce_incomplete(self):
-        """
-        Enforce the following rule:
-        
-        If a Task is not COMPLETE, then none
-        of its downstream Tasks can be COMPLETE.
-        
-        Any Tasks that are erroneously COMPLETE should
-        be changed to WAITING.
-        """
-        _rec_enforce_incomplete(self.end_task, set())
-
-    def ready_tasks(self):
-        """
-        Return a list of the tasks in this
-        workflow that are ready to run
-        """
-        return _ready_tasks(self.end_task, set())
-
-
-
-def _rec_interrupt(task, visited):
-    """
-    Traverse the DAG rooted at `task`
-    and interrupt all of its RUNNING Tasks. 
-    """
-    if task.identifier in visited:
-        return
-
-    visited.add(task.identifier)
-    if task.state == TaskState.RUNNING:
-        task.interrupt()
-
-    for d in task.dependencies:
-        _interrupt(d, visited)
-
-    return
 
 
 def _rec_cycle_exists(task, ancestors, visited):
@@ -258,52 +248,36 @@ def _rec_cycle_exists(task, ancestors, visited):
     return False
 
 
-def _ready_tasks(task, visited):
+def construct_adj_list(task, start_node=None):
     """
-    Return a list of the ready tasks
-    "at or beneath" this task.
+    Construct an 'adjacency list' representation of 
+    the task DAG; include an artificial StartTask
+    node
     """
-    if task.identifier in visited:
-        return []
+    adj_list = defaultdict(set)
 
-    visited.add(task.identifier)
-    if task.is_ready():
-        return [task]
-    else:
-        result = []
-        for d in task.dependencies:
-            if d.identifier not in visited:
-                result += _ready_tasks(d, visited)
-        return result 
+    if start_node is None:
+        start_node = StartTask()
 
-def _rec_enforce_incomplete(task, visited):
+    _rec_construct_adj_list(task, adj_list, start_node, visited=set())
+    adj_list = {k: list(v) for k, v in adj_list.items()}
+    return adj_list, start_node
+
+
+def _rec_construct_adj_list(task, adj_list, start_node, visited=set()):
     """
-    Exhaustively visit all Tasks upstream
-    of this one and determine if any of them
-    are not COMPLETE. 
-
-    If so, if this one is
-    COMPLETE then reset it to WAITING.
+    Recursive core of `construct_adj_list`
     """
-    # Base case: this task has already been
-    # exhaustively explored
-    if task.identifier in visited:
-        return task.state != TaskState.COMPLETE
+    # base case: no dependencies
+    if len(task.dependencies) == 0:
+        adj_list[start_node].add(task)
 
-    # Recurrent case: exhaustively explore upstream
-    #                 tasks and relabel this one if
-    #                 necessary
-    upstream_incomplete = False
-    for d in task.dependencies:
-        upstream_incomplete |= _rec_enforce_incomplete(d, visited)
-    
-    visited.add(task.identifier)
+    # Recurrent case: has dependencies
+    for dep in task.dependencies:
+        if dep not in visited:
+            adj_list[dep].add(task)
+            _rec_construct_adj_list(dep, adj_list, visited=visited)
 
-    if upstream_incomplete: # something incomplete upstream
-        if (task.state == TaskState.COMPLETE): # --> need to update
-            task.state = TaskState.WAITING
-        return True
-    else: # Everything complete upstream
-        return (task.state != TaskState.COMPLETE)
+    visited.add(task)
 
 
