@@ -15,13 +15,16 @@
     Meta-comment: 
     * Methods named '_is_...' are meant to return
       a bool while doing practically no work.
-      Simply report state as it exists.
+      Simply report properties as they exist.
     * Methods named '_verify...' are meant to 
       do some work. They (A) check the underlying data,
-      (B) update the state, and then (C) return a bool.
+      (B) update the relevant attribute, and then (C) return a bool.
+
 """
 
 from dagger.abstract.communicator import DefaultCommunicator
+from dagger.core import helpers
+
 from abc import ABC, abstractmethod
 from enum import Enum
 
@@ -68,71 +71,53 @@ class AbstractTask(ABC):
     communicating its state to the WorkflowManager.
     But it's initialized with "do-nothing" default
     communication machinery.
+    
+    A task has a `quickhash` that exposes modifications to it.
+    The `quickhash` is a hashable computed in a
+    way that satisfies these rules:
+    * Identification: different Task instances should have
+                      different quickhashes
+    * Modification: a Task's quickhash should be different
+                    whenever the Task is modified in a way
+                    that 'matters'.
+    This need not be a full hash of the object; it just needs to satisfy
+    these rules and be inexpensive to compute.
     """
 
-    def __init__(self, identifier, dependencies=[]):
+    def __init__(self, identifier, inputs={}, outputs={}, dependencies=[],
+                                   resources={}):
         """
         Construct a new Task object with
         given identifier and dependencies.
 
         On construction, its state is `WAITING`.
         """
-
         self.identifier = identifier
         self.dependencies = dependencies
         self.state = TaskState.WAITING
         self.communicator = DefaultCommunicator()
+        
+        # Collect additional dependencies from `inputs`
+        deps = helpers.collect_dependencies(inputs, dependencies)
+        self.dependencies = deps
+        self.inputs = inputs
+
+        # Construct the output Datums
+        self.outputs = self._initialize_outputs(outputs)
+        
+        # Compute this Task's quickhash
+        self.quickhash = self._quickhash()
     
-    @abstractmethod
-    def _run_logic(self):
-        """
-        Core logic for executing the computational work.
-        """
-        raise NotImplementedError("Subclasses of Task must implement `_run_logic`")
-    
-    @abstractmethod
-    def _interrupt_cleanup(self):
-        """
-        Reset the Task's internal data
-        such that it can be attempted again
-        after an interrupt.
-        """
-        raise NotImplementedError("Subclasses of Task must implement `_interrupt_cleanup`")
+        # Store the Task's resource requirements
+        self.resources = resources
 
     @abstractmethod
-    def _fail_cleanup(self):
+    def _initialize_outputs(self, output_dict):
         """
-        Perform any necessary cleanup after a Task fails.
+        A Task needs to specify how it initializes output
+        Datums from a dict of name=>pointer
         """
-        raise NotImplementedError("Subclasses of Task must implement `_fail_cleanup`")
-
-    @abstractmethod
-    def _verify_complete_logic(self):
-        """
-        Return a bool indicating whether a task is complete.
-        Details will depend on the Task's 
-        specific implementation.
-        Returns a bool, and does not modify the Task's state.
-        """
-        raise NotImplementedError("Subclasses of Task must implement `_verify_complete`")
-
-    def _update_state(self, new_state):
-        """
-        Assign a new value to self.state
-        """
-        self.state = new_state
-        self.communicator.report_state(self)
-
-    def verify_complete(self):
-        """
-        Check whether a task is complete;
-        if it is, update the Task's state.
-        Return a bool indicating whether the 
-        task is complete.
-        """
-        if self._verify_complete_logic():
-            self._update_state(TaskState.COMPLETE)
-        return self.state == TaskState.COMPLETE
+        raise NotImplementedError("Subclasses of AbstractTask must implement `_initialize_outputs(output_dict)`")
 
     def is_ready(self):
         """
@@ -149,16 +134,84 @@ class AbstractTask(ABC):
         Task's state up-to-date and (B) catching exceptions
         and failures to complete.
         """
-        self._update_state(TaskState.RUNNING)
+        self.update_state(TaskState.RUNNING)
         try:
             self._run_logic()
+            if not self._verify_outputs():
+                raise RuntimeError("Task {self.identifier} ran, but is missing outputs.")
         except KeyboardInterrupt:
             self.interrupt()
         except Exception as e:
             self.fail()
             raise e
         else:
-            self._update_state(TaskState.COMPLETE)
+            self.update_state(TaskState.COMPLETE)
+    
+    @abstractmethod
+    def _run_logic(self):
+        """
+        Core logic for executing the computational work.
+        """
+        raise NotImplementedError("Subclasses of AbstractTask must implement `_run_logic`")
+    
+    def update_state(self, new_state):
+        """
+        Assign a new value to self.state
+        """
+        self.state = new_state
+        self.communicator.report_state(self)
+    
+    def _verify_outputs(self):
+        """
+        Verify that all the task's outputs are AVAILABLE.
+        """
+        return all((out._verify_available() for out in self.outputs.values()))
+
+    def verify_complete(self):
+        """
+        Verify whether a task is complete;
+        if it is, update the Task's state.
+        Return a bool indicating whether the 
+        task is complete.
+        """
+        deps_complete = all((d.state == TaskState.COMPLETE for d in self.dependencies))
+        task_uptodate = self._verify_quickhash()
+        inp_uptodate = all((inp._verify_quickhash() for inp in self.inputs.values())) 
+        outputs_complete = self._verify_outputs() 
+        complete = all((deps_complete, task_uptodate, inp_uptodate, outputs_complete))
+
+        if complete:
+            self.update_state(TaskState.COMPLETE)
+        return self.state == TaskState.COMPLETE
+    
+    def _verify_quickhash(self):
+        """
+        Compute this Task's quickhash and check whether it
+        matches the Task's stored quickhash.
+        If they match, return True.
+        If they don't match, update the quickhash and return False.
+        """
+        new_hash = self._quickhash()
+        if new_hash == self.quickhash:
+            return True
+        else:
+            self.quickhash = new_hash
+            return False
+    
+    @abstractmethod
+    def _quickhash(self):
+        """
+        A Task subclass needs to specify a `quickhash`
+        function satisfying the following rules:
+        * Identification: different Task instances should have
+                          different quickhashes
+        * Modification: a Task's quickhash should be different
+                        whenever the Task is modified in a way
+                        that 'matters'.
+        This need not be a full hash; it just needs to satisfy
+        these rules and be inexpensive to compute.
+        """
+        raise NotImplementedError("Subclasses of AbstractTask must implement `_quickhash()`")
 
     def interrupt(self):
         """
@@ -166,15 +219,31 @@ class AbstractTask(ABC):
         
         also set self.state = TaskState.WAITING.
         """
-        self._update_state(TaskState.WAITING)
+        self.update_state(TaskState.WAITING)
         self._interrupt_cleanup()
+   
+    @abstractmethod
+    def _interrupt_cleanup(self):
+        """
+        Reset the Task's internal data
+        such that it can be attempted again
+        after an interrupt.
+        """
+        raise NotImplementedError("Subclasses of AbstractTask must implement `_interrupt_cleanup`")
 
     def fail(self):
         """
         Transition a RUNNING Task into a FAILED state.
         """
-        self._update_state(TaskState.FAILED)
+        self.update_state(TaskState.FAILED)
         self._fail_cleanup()
+    
+    @abstractmethod
+    def _fail_cleanup(self):
+        """
+        Perform any necessary cleanup after a Task fails.
+        """
+        raise NotImplementedError("Subclasses of AbstractTask must implement `_fail_cleanup`")
 
 
 class StartTask(AbstractTask):
@@ -189,15 +258,18 @@ class StartTask(AbstractTask):
     def __init__(self):
         super().__init__(identifier="__START__")
 
+    def _initialize_outputs(self, output_dict):
+        return {}
+
     def _run_logic(self):
         return
+    
+    def _quickhash(self):
+        return "__START__"
 
     def _interrupt_cleanup(self):
         return
 
     def _fail_cleanup(self):
         return
-
-    def _verify_complete_logic(self):
-        return True
 

@@ -28,7 +28,7 @@ class AbstractManager(ABC):
     representing the "final" task in the DAG.
 
     It executes the workflow via the `run()` method.
-    In the abstract, this must run a graph traversal algorithm
+    In the abstract, this runs a graph traversal algorithm
     that launches jobs while respecting DAG dependencies.
 
     It also has some convenience methods for assessing 
@@ -75,22 +75,29 @@ class AbstractManager(ABC):
         (b) if there are any, update the 'ready' tasks
         (c) launch a subset of the 'ready' tasks
         """
-        # Initialize the running_tasks
-        self.running.append(self.start_task)
+        try:
+            # Initialize the running_tasks
+            self.running.append(self.start_task)
 
-        # While there are 'running' tasks...
-        while self.running:
-            
-            # ...check if any of the running tasks are finished
-            finished_tasks = self._get_finished_tasks(running)
-            if finished_tasks:
-                # If they are, then wrap them up. 
-                self._wrapup_finished_tasks(finished_tasks)
+            # While there are 'running' tasks...
+            while self.running:
                 
-                # Update the ready tasks
-                self._update_ready_tasks(finished_tasks)
-                # Launch some more tasks
-                self._launch_ready_tasks(self.ready_tasks)
+                # ...check if any of the running tasks are finished
+                finished_tasks = self._get_finished_tasks(running)
+                if finished_tasks:
+                    # If they are, then wrap them up. 
+                    self._wrapup_finished_tasks(finished_tasks)
+                    
+                    # Update the ready tasks
+                    self._update_ready_tasks(finished_tasks)
+                    # Launch some more tasks
+                    self._launch_ready_tasks(self.ready_tasks)
+
+        except KeyboardInterrupt:
+            print("Workflow interrupted by user. Killing tasks and cleaning up. Please wait")
+            # ...check if any of the running tasks are finished
+            self._interrupt()
+            raise KeyboardInterrupt
 
 
     def _get_finished_tasks(self, running_tasks):
@@ -100,7 +107,7 @@ class AbstractManager(ABC):
         """
         finished = [t for t in running_tasks \
                     if self._get_running_task_state(t) in (TaskState.COMPLETE, 
-                                                       TaskState.FAILED)]
+                                                           TaskState.FAILED)]
         return finished
 
 
@@ -114,12 +121,18 @@ class AbstractManager(ABC):
         # Ensure the finished tasks' states
         # are up-to-date.
         for t in finished_tasks:
+
+            # Sync up the task's state
             t_s = self._get_running_task_state(t)
             t.update_state(t_s)
             if t_s == TaskState.COMPLETE:
-                self.complete.add(t_s)
+                self.complete.add(t)
             elif t_s == TaskState.FAILED:
-                self.failed.add(t_s)
+                self.failed.add(t)
+            else:
+                t.update_state(TaskState.WAITING)
+                self.waiting.add(t)
+                raise ValueError("Task {t} with state {t_s} is neither COMPLETE nor FAILED.")
 
             # Perform any additional wrapup as necessary.
             self._wrapup_task(t)
@@ -127,7 +140,6 @@ class AbstractManager(ABC):
             # Remove the task from running
             self.running.remove(t)
         return
-
 
     def _update_ready_tasks(self, finished_tasks):
         """
@@ -147,7 +159,6 @@ class AbstractManager(ABC):
                     self.ready.append(c)
                     self.waiting.remove(c)
         
-
     def _launch_ready_tasks(self, ready_tasks):
         """
         Given a list of ready tasks, choose
@@ -161,12 +172,11 @@ class AbstractManager(ABC):
             self._launch_task(task)
             self.running.append(task)
 
-
     @abstractmethod
     def _launch_task(self, task):
         """
         Launch a task. For nontrivial settings
-        this involves some setup (e.g., machinery for 
+        this involves some setup (e.g., creating machinery for 
         communication between processes)
         """
         raise NotImplementedError("Subclasses of `AbstractManager` must implement `_launch_task()`")
@@ -178,7 +188,8 @@ class AbstractManager(ABC):
         This may involve tearing down or updating some 
         implementation-specific auxiliary data associated with the task.
 
-        It doesn't need to update the task's `state`; that's done elsewhere.
+        It need not update the task's `state`; that's done in another 
+        function that wraps this one (`wrapup_finished_tasks`).
         """
         raise NotImplementedError("Subclasses of `AbstractManager` must implement `_wrapup_task()`")
         
@@ -192,15 +203,6 @@ class AbstractManager(ABC):
         raise NotImplementedError("Subclasses of `AbstractManager` must implement `_get_running_task_state()`")
 
     @abstractmethod
-    def _get_running_task_output(self, task):
-        """
-        Get the output of a running task (assuming it's complete).
-        For nontrivial settings, this involves some
-        additional machinery beyond Task.
-        """
-        raise NotImplementedError("Subclasses of `AbstractManager` must implement `_get_running_task_output()`")
-        
-    @abstractmethod
     def _choose_tasks(self, ready_tasks):
         """
         Given a list of ready tasks, choose a subset of them 
@@ -209,13 +211,11 @@ class AbstractManager(ABC):
         raise NotImplementedError("Subclasses of AbstractManager must define `_choose_tasks()`")
 
     @abstractmethod
-    def interrupt(self):
+    def _interrupt(self):
         """
         Interrupt all RUNNING tasks in the DAG.
         """
         raise NotImplementedError("Subclasses of AbstractManager must implement `interrupt`")
-
-
 
 def _rec_cycle_exists(task, ancestors, visited):
     """
@@ -247,7 +247,6 @@ def _rec_cycle_exists(task, ancestors, visited):
     visited.add(task.identifier)
     return False
 
-
 def construct_adj_list(task, start_node=None):
     """
     Construct an 'adjacency list' representation of 
@@ -262,7 +261,6 @@ def construct_adj_list(task, start_node=None):
     _rec_construct_adj_list(task, adj_list, start_node, visited=set())
     adj_list = {k: list(v) for k, v in adj_list.items()}
     return adj_list, start_node
-
 
 def _rec_construct_adj_list(task, adj_list, start_node, visited=set()):
     """

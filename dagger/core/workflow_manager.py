@@ -8,10 +8,14 @@
 """
 
 from dagger.abstract import AbstractManager, AbstractCommunicator
-from dagger.core.helpers import construct_edge_lists
+from dagger.core.helpers import resources_available, \
+                                increment_resources, \
+                                decrement_resources
+
 from loky import get_reusable_executor
 from multiprocessing import Manager 
 import copy
+
 
 class ProcessCommunicator(AbstractCommunicator):
     """
@@ -41,46 +45,49 @@ class WorkflowManager(AbstractManager):
     """
     WorkflowManager implementation that executes tasks
     with multiprocess parallelism. Relies on
-    the `loky` package as a backend.
+    the `loky` reusable executor as a backend.
+
+    The user may specify an arbitrary dictionary of resource constraints
+    that the running tasks must satisfy. Uses a greedy algorithm
+    to launch tasks subject to these constraints.
     """
 
-    def __init__(self, root_task, resources={}, start_node="START", executor_kwargs={}):
+    def __init__(self, root_task, resources={}, executor_kwargs={}):
         """
         WorkflowManager implementation that executes tasks
         with multiprocess parallelism. Relies on
-        the `loky` package as a backend.
+        the `loky` reusable executor as a backend.
         """
         super().__init__(root_task)
         self.resources = resources
 
-        # Keep an edge-list representation of the DAG
-        self.edge_lists = construct_edge_lists(root_task, start_node=start_node) 
-
-        # Maintain collections of Tasks in each state.
-        self.waiting = set()
-        self.completed = set([start_node])
-        self.failed = set()
-
         # 'Running' tasks are a special case, since
         # they're actually running in separate processes and
         # communication is nontrivial.
-        self.running = {}
+        self.running_state_values = {}
+        self.running_submissions = {}
 
-        # An `executor` object launches processes;
-        # a `Manager` object enables shared state between them.
+        # A loky `executor` object launches processes;
+        # a `multiprocessing.Manager` object enables shared state between them.
+        self._executor_kwargs = executor_kwargs
         self.executor = get_reusable_executor(**executor_kwargs)
-        self.manager = Manager() 
+        self.mp_manager = Manager() 
         return
 
-    def launch_task(self, task):
+    def _launch_task(self, task):
         """
         Execute a Task in a separate process.
         Ensure its state is accessible to this process.
         """
         # Wrap the Task's state in a `Value` object
         # shared between processes. Keep it in a safe place.
-        state_value = manager.Value(task.state.value)
-        self.running[task] = {"state_value": state_value}
+        state_value = self.mp_manager.Value(task.state.value)
+        self.running_state_values[task] = state_value
+
+        # Need to decrement the task's resources from the 
+        # WorkflowManager's resources.
+        self.resources = decrement_resources(self.resources,
+                                             task.resources)
 
         # Make a shallow copy of the task and remove its
         # dependencies. Give it a Communicator that also
@@ -89,38 +96,76 @@ class WorkflowManager(AbstractManager):
         task_copy.dependencies = []
         task_copy.communicator = ProcessCommunicator(state_value)
 
-        # Define a wrapper function for the task,
-        # which runs it and returns its outputs.
+        # Define a wrapper function for the task copy,
+        # which runs and returns it.
         def run_task():
             task_copy.run()
-            return task.outputs
+            return task_copy
 
         # Submit the wrapper function
-        self.running[task]["submission"] = self.executor.submit(run_task)
+        self.running_submissions[task] = self.executor.submit(run_task)
         return
 
-    def _running_task_state(self, task):
-        return self.running[task]["state_value"].value
-
-    def _running_task_output(self, task):
-        return self.running[task]["submission"].result()
-
-    def run(self):
+    def _wrapup_task(self, task):
         """
-        A loop that continually checks for available
-        jobs and launches them, subject to resource
-        constraints.
+        Do the following after a Task finishes 
+        (enters COMPLETED or FAILED state):
+        * Finalize the Task's outputs
+        * Remove the task's multiprocessing infrastructure
+        * Restore its resources to the WorkflowManager.
         """
-        while len(self.waiting) > 0:
-            # Check tasks in 'running' list to see if
-            # any of them finished
+        self.running_state_values.pop(task)
+        self.running_submissions.pop(task)
+        # Need to restore task's resources to the manager 
+        self.resources = increment_resources(self.resources,
+                                             task.resources)
 
-            # If a task is COMPLETE, then 
-            # move it to `completed` and check whether
-            # any of its children are ready to run.
-            
-            # If a child is ready to run, move it to 
-            # the `running` list and run it.
-            # TODO figure out loky "reusable executor"
-            pass
+    def _get_running_task_state(self, task):
+        t_sv = self.running_state_values[task].value
+        return TaskState(t_sv)
+
+    def _choose_tasks(self, ready_tasks):
+        """
+        Greedily select tasks that fit within the 
+        WorkflowManager's available resources
+        """
+        chosen = []
+        # The actual resources are decremented at
+        # task launch; so we just work with a copy 
+        # of the resources dictionary
+        resources = copy.deepcopy(self.resources)
+
+        # Iterate through ready tasks and naively
+        # select the first ones that satisfy resource
+        # constraints
+        for rt in ready_tasks:
+            if resources_available(resources, rt.resources):
+                chosen.append(rt)
+                resources = decrement_resources(resources, rt.resources)
+        return chosen
+
+    def _interrupt(self):
+        """
+        Shutdown/reset the loky executor 
+        -and-
+        Reset all state for the running tasks.
+        """
+        # Reset the executor
+        self.executor.shutdown(wait=False, kill_workers=True)
+        self.executor = get_reusable_executor(**(self._executor_kwargs))
+
+        # Clear all state for running tasks
+        self.running_task_states = {}
+        self.running_submissions = {}
+        for task in self.running:
+            # Move each task to `WAITING`
+            task.update_state(TaskState.WAITING)
+            self.waiting.add(task)
+
+            # Need to restore task's resources to the WorkflowManager
+            self.resources = increment_resources(self.resources,
+                                                 task.resources)
+
+        self.running = []
+        return
 

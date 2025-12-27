@@ -60,6 +60,7 @@
     1. Identification: different Datums should have different quickhashes
     2. Modification: a Datum's quickhash should be different whenever its
                      underlying data gets modified.
+
     Certainly, a full-blown hash of the underlying data would work.
     But simpler and less expensive operations also satisfy these rules.
     For example, if a Datum represents a file on disk, then a quickhash computed
