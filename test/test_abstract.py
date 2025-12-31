@@ -1,12 +1,20 @@
 
 from dagger.abstract import AbstractTask, TaskState, AbstractManager
+from dagger.core import MemoryDatum
 
 class MinimalTask(AbstractTask):
     """
     A minimal/do-nothing implementation of base.AbstractTask,
     strictly for testing purposes.
     """
+    def _initialize_outputs(self, output_dict):
+        return {"output": MemoryDatum(parent=self)}
+
+    def _quickhash(self):
+        return self.identifier
+
     def _run_logic(self):
+        self.outputs["output"].populate(f"result of task {self.identifier}")
         return
 
     def _interrupt_cleanup(self):
@@ -15,30 +23,48 @@ class MinimalTask(AbstractTask):
     def _fail_cleanup(self):
         return
 
-    def _verify_complete_logic(self):
-        return False
-
-    def _finished_successfully(self):
-        return True
-
 ####################################
 # TASK CONSTRUCTION AND COMPLETION
 ####################################
 def test_base_task():
-    # Construct two tasks; one depends on the other
+    # Construct three tasks; 
+    # * t2 `depends` on t1
+    # * t3 uses the `output` of t1; and `depends` on t2
     t1 = MinimalTask("t1")
     t2 = MinimalTask("t2", dependencies=[t1])
+    t3 = MinimalTask("t3", inputs={"input": t1.outputs["output"]},
+                           dependencies=[t2])
 
     # Check basic properties of the constructed tasks
     assert t2.identifier == "t2"
     assert t2.dependencies[0].identifier == "t1"
+
+    assert t3.identifier == "t3"
+    print([d.identifier for d in t3.dependencies])
+    assert set(t3.dependencies) == set([t1, t2])
 
     # If we run t1, then t2 should be ready
     assert not t2.is_ready()
     t1.run()
     assert t1.state == TaskState.COMPLETE
     assert t2.is_ready()
+    
+    # t3 should not be ready until t2 has run;
+    # and should raise an error if we try running it.
+    assert not t3.is_ready()
+    try:
+        t3.run()
+    except RuntimeError:
+        assert True
+    else:
+        assert False
+    assert t3.state == TaskState.WAITING
 
+    # Finally, run t2 and then t3.
+    t2.run()
+    assert t3.is_ready()
+    t3.run()
+    assert t3.outputs["output"].pointer == "result of task t3"
 
 #####################
 # TASK FAILURE 
@@ -54,12 +80,6 @@ class ExceptionTask(MinimalTask):
 
     def _fail_cleanup(self):
         self.failed = True
-
-    def _verify_complete_logic(self):
-        return False
-
-    def _finished_successfully(self):
-        return True
 
 def test_base_task_failure():
     # When we run this task, it should go into
@@ -89,12 +109,6 @@ class InterruptTask(MinimalTask):
         self.interrupted = True
         return
     
-    def _verify_complete(self):
-        return False
-
-    def _finished_successfully(self):
-        return False
-
 def test_base_task_interrupt():
     # When we run this task, it should go back into
     # a WAITING state
@@ -102,6 +116,7 @@ def test_base_task_interrupt():
     ti.run()
     assert ti.interrupted
     assert ti.state == TaskState.WAITING
+
 
 ###############################
 # WORKFLOW MANAGER
@@ -111,8 +126,24 @@ class MinimalManager(AbstractManager):
     A minimal/do-nothing implementation of base.AbstractManager,
     strictly for testing purposes.
     """
-    def run(self):
+
+    def _choose_tasks(self, ready_tasks):
+        return ready_tasks[:]
+
+    def _get_running_task_state(self, task):
+        return task.state
+
+    def _interrupt(self):
         return
+
+    def _launch_task(self, task):
+        print(f"Task {task.identifier} got launched!")
+        task.run()
+        return
+
+    def _wrapup_task(self, task):
+        return
+
 
 def test_base_manager():
 
@@ -122,7 +153,7 @@ def test_base_manager():
     t = t0
     for i in range(9):
         t_new = MinimalTask(f"t{i+1}",
-                            dependencies=[t]
+                            inputs={"input":t.outputs["output"]}
                             )
         t = t_new
     m = MinimalManager(t)
@@ -134,15 +165,6 @@ def test_base_manager():
     except:
         assert False
     
-    # If we manually set t8's state to COMPLETE,
-    # the enforce_incomplete() method should
-    # reset it to WAITING.
-    t8 = t.dependencies[0]
-    assert t8.identifier == "t8"
-    t8.state = TaskState.COMPLETE
-    m._enforce_incomplete()
-    assert t8.state == TaskState.WAITING
-
     # Introduce a loop into the workflow.
     # Ensure it fails to validate.
     t0.dependencies = [t]
@@ -153,3 +175,8 @@ def test_base_manager():
     else:
         assert False
 
+    # Remove the loop. Try running
+    # the DAG.
+    t0.dependencies = []
+    m.run()
+    

@@ -17,7 +17,10 @@
 """
 
 from abc import ABC, abstractmethod
-from dagger.abstract import TaskState
+from collections import defaultdict
+
+from dagger.abstract.helpers import cycle_exists, construct_adj_list 
+from dagger.abstract import TaskState, StartTask
 
 class AbstractManager(ABC):
     """
@@ -43,14 +46,14 @@ class AbstractManager(ABC):
 
         # Construct and store an adjacency list
         # representation of the DAG
-        adj_list, start_task = construct_adj_list(end_task)
+        adj_list, start_task = construct_adj_list(end_task, StartTask())
         self.adj_list = adj_list
         self.start_task = start_task
 
-        # These data structures contain state for
+        # These data structures capture the state of
         # the DAG execution algorithm (i.e., `run`).
         self.waiting = set()
-        self.ready_tasks = []
+        self.ready = []
         self.running = []
         self.failed = set()
         self.complete = set()
@@ -61,8 +64,8 @@ class AbstractManager(ABC):
         actually form a DAG. I.e., there
         are no circular dependencies.
         """
-        if _rec_cycle_exists(self.end_task, [], set()):
-            raise ValueError("Workflow rooted at {self.end_task.identifier} is not a DAG")
+        if cycle_exists(self.end_task):
+            raise ValueError("Workflow ending at {self.end_task.identifier} is not a DAG")
 
     def run(self):
         """
@@ -76,14 +79,21 @@ class AbstractManager(ABC):
         (c) launch a subset of the 'ready' tasks
         """
         try:
-            # Initialize the running_tasks
-            self.running.append(self.start_task)
+            # Initialize workflow state, and
+            # then start launching ready tasks
+            self.initialize_workflow_state()
+            self._launch_ready_tasks(self.ready)
 
             # While there are 'running' tasks...
+            counter = 10
             while self.running:
-                
+                print("RUNNING: ", [r.identifier for r in self.running])
+                counter -= 1
+                if counter < 0:
+                    raise ValueError()
                 # ...check if any of the running tasks are finished
-                finished_tasks = self._get_finished_tasks(running)
+                finished_tasks = self._get_finished_tasks(self.running)
+                print("FINISHED: ", [f.identifier for f in finished_tasks])
                 if finished_tasks:
                     # If they are, then wrap them up. 
                     self._wrapup_finished_tasks(finished_tasks)
@@ -91,7 +101,7 @@ class AbstractManager(ABC):
                     # Update the ready tasks
                     self._update_ready_tasks(finished_tasks)
                     # Launch some more tasks
-                    self._launch_ready_tasks(self.ready_tasks)
+                    self._launch_ready_tasks(self.ready)
 
         except KeyboardInterrupt:
             print("Workflow interrupted by user. Killing tasks and cleaning up. Please wait")
@@ -99,6 +109,61 @@ class AbstractManager(ABC):
             self._interrupt()
             raise KeyboardInterrupt
 
+    def initialize_workflow_state(self, verify_tasks=True):
+        """
+        Traverse the workflow's DAG, 
+        assess the state of its tasks, and 
+        update its `waiting`, `complete`,`failed`, `ready` attributes.
+
+        Some logic to enforce:
+        * All tasks must be in exactly one of `waiting`, `complete`, or `failed`
+            - When in doubt, a task should be in `waiting`
+        * All tasks downstream of a waiting task or failed task should themselves be waiting
+        * A task is `ready` iff all of its dependencies are complete 
+            - `ready` must be a subset of `waiting`
+        """
+        # Traverse the DAG "backwards", starting at `end_task`
+
+        return
+
+    def _rec_initialize_state(self, task, visited, verify_tasks=True):
+
+        # Initialize state for all dependencies
+        # (that haven't been visited yet)
+        for d in task.dependencies:
+            if d not in visited:
+                _rec_initialize_state(self, d, visited, verify_tasks=verify_tasks)
+
+        # If any dependencies are WAITING or FAILED,
+        # then this task is WAITING.
+        if any((((d in self.waiting) or (d in self.failed)) for d in task.dependencies)):
+            task.update_state(TaskState.WAITING)
+            self.waiting.add(task)
+        # Otherwise, assign the task to the 
+        # appropriate set
+        else:
+            # Shallow check whether the task is FAILED
+            if task.state == TaskState.FAILED:
+                self.failed.add(task)
+            # At this point, the task is putatively COMPLETE
+            else:
+                if verify_tasks: # Verify whether it's actually complete
+                    if task.verify_complete():
+                        self.complete.add(task)
+                    else:
+                        task.update_state(TaskState.WAITING)
+                        self.waiting.add(task)
+                else: # Just a shallow check of this task's state
+                    if task.state == TaskState.COMPLETE:
+                        self.complete.add(task)
+                    else:
+                        task.update_state(TaskState.WAITING)
+                        self.waiting.add(task)
+
+
+        # Mark this task as visited
+        visited.add(task)
+        return
 
     def _get_finished_tasks(self, running_tasks):
         """
@@ -109,7 +174,6 @@ class AbstractManager(ABC):
                     if self._get_running_task_state(t) in (TaskState.COMPLETE, 
                                                            TaskState.FAILED)]
         return finished
-
 
     def _wrapup_finished_tasks(self, finished_tasks):
         """
@@ -168,7 +232,7 @@ class AbstractManager(ABC):
         """
         chosen_tasks = self._choose_tasks(ready_tasks)
         for task in chosen_tasks:
-            self.ready_tasks.remove(task)
+            self.ready.remove(task)
             self._launch_task(task)
             self.running.append(task)
 
@@ -216,66 +280,4 @@ class AbstractManager(ABC):
         Interrupt all RUNNING tasks in the DAG.
         """
         raise NotImplementedError("Subclasses of AbstractManager must implement `interrupt`")
-
-def _rec_cycle_exists(task, ancestors, visited):
-    """
-    Use DFS to detect cycles in task dependencies.
-    ancestors: list of task IDs.
-    visited: set of task IDs.
-    """
-    # Base case: check if this task is in
-    # its own ancestors (cycle exists)
-    if task.identifier in ancestors:
-        return True
-
-    # Base case: check if this task has already
-    # been visited/explored
-    if task.identifier in visited:
-        return False
-
-    # Recursive case: add this task to the
-    # ancestor stack and explore its
-    # dependencies.
-    ancestors.append(task.identifier)
-    for d in task.dependencies:
-        if _rec_cycle_exists(d, ancestors, visited):
-            return True
-    # If none of the dependencies led to 
-    # a cycle, remove this task from ancestors
-    # and mark it as visited/explored
-    ancestors.pop()
-    visited.add(task.identifier)
-    return False
-
-def construct_adj_list(task, start_node=None):
-    """
-    Construct an 'adjacency list' representation of 
-    the task DAG; include an artificial StartTask
-    node
-    """
-    adj_list = defaultdict(set)
-
-    if start_node is None:
-        start_node = StartTask()
-
-    _rec_construct_adj_list(task, adj_list, start_node, visited=set())
-    adj_list = {k: list(v) for k, v in adj_list.items()}
-    return adj_list, start_node
-
-def _rec_construct_adj_list(task, adj_list, start_node, visited=set()):
-    """
-    Recursive core of `construct_adj_list`
-    """
-    # base case: no dependencies
-    if len(task.dependencies) == 0:
-        adj_list[start_node].add(task)
-
-    # Recurrent case: has dependencies
-    for dep in task.dependencies:
-        if dep not in visited:
-            adj_list[dep].add(task)
-            _rec_construct_adj_list(dep, adj_list, visited=visited)
-
-    visited.add(task)
-
 

@@ -16,7 +16,6 @@
 """
 
 from dagger.abstract import AbstractTask, TaskState
-from dagger.core import helpers
 from abc import abstractmethod
 
 #class Task(AbstractTask):

@@ -23,7 +23,7 @@
 """
 
 from dagger.abstract.communicator import DefaultCommunicator
-from dagger.core import helpers
+from dagger.abstract import helpers
 
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -119,13 +119,6 @@ class AbstractTask(ABC):
         """
         raise NotImplementedError("Subclasses of AbstractTask must implement `_initialize_outputs(output_dict)`")
 
-    def is_ready(self):
-        """
-        A Task is ready to run iff all of its dependencies
-        are complete
-        """
-        return all((d.state == TaskState.COMPLETE for d in self.dependencies))
-
     def run(self):
         """
         Run the Task.
@@ -134,11 +127,13 @@ class AbstractTask(ABC):
         Task's state up-to-date and (B) catching exceptions
         and failures to complete.
         """
+        if not self.is_ready():
+            raise RuntimeError(f"Task {self.identifier} is not ready to run.")
         self.update_state(TaskState.RUNNING)
         try:
             self._run_logic()
             if not self._verify_outputs():
-                raise RuntimeError("Task {self.identifier} ran, but is missing outputs.")
+                raise RuntimeError(f"Task {self.identifier} ran, but is missing outputs.")
         except KeyboardInterrupt:
             self.interrupt()
         except Exception as e:
@@ -146,6 +141,13 @@ class AbstractTask(ABC):
             raise e
         else:
             self.update_state(TaskState.COMPLETE)
+    
+    def is_ready(self):
+        """
+        A Task is ready to run iff all of its dependencies
+        are complete
+        """
+        return all((d.state == TaskState.COMPLETE for d in self.dependencies))
     
     @abstractmethod
     def _run_logic(self):
@@ -249,17 +251,28 @@ class AbstractTask(ABC):
 class StartTask(AbstractTask):
     """
     This implementation of AbstractTask is an artificial,
-    'do-nothing' task that represents the start of a workflow. 
+    'do-nothing' task that represents the *start* of a workflow. 
 
     It's used 'under the hood' by the WorkflowManager;
     the user does not ever need to construct one explicitly.
+
+    Its state is *always* set to `COMPLETE`.
     """
 
     def __init__(self):
         super().__init__(identifier="__START__")
+        self.update_state(TaskState.COMPLETE)
 
+    def update_state(self, new_state):
+        self.state = TaskState.COMPLETE
+        self.communicator.report_state(self)
+    
     def _initialize_outputs(self, output_dict):
         return {}
+
+    def verify_complete(self):
+        self.update_state(TaskState.COMPLETE)
+        return True
 
     def _run_logic(self):
         return
@@ -272,4 +285,5 @@ class StartTask(AbstractTask):
 
     def _fail_cleanup(self):
         return
+
 

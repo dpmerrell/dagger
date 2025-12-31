@@ -39,11 +39,6 @@ class AbstractCommunicator(ABC):
         """
         raise NotImplementedError("Subclasses of `AbstractCommunicator` must implement `report_state(...)`")
 
-    @abstractmethod
-    def report_results(self, task_state):
-        """
-        Use the 
-        """
 
 class DefaultCommunicator(AbstractCommunicator):
     """
