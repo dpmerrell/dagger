@@ -118,9 +118,9 @@ def test_base_task_interrupt():
     assert ti.state == TaskState.WAITING
 
 
-###############################
+###############################################
 # WORKFLOW MANAGER
-###############################
+###############################################
 class MinimalManager(AbstractManager):
     """
     A minimal/do-nothing implementation of base.AbstractManager,
@@ -145,7 +145,7 @@ class MinimalManager(AbstractManager):
         return
 
 
-def test_base_manager():
+def test_abstract_manager():
 
     # Construct a workflow of 10 tasks,
     # chained together (i.e., linear graph)
@@ -153,7 +153,7 @@ def test_base_manager():
     t = t0
     for i in range(9):
         t_new = MinimalTask(f"t{i+1}",
-                            inputs={"input":t.outputs["output"]}
+                            inputs={"input": t.outputs["output"]}
                             )
         t = t_new
     m = MinimalManager(t)
@@ -180,3 +180,20 @@ def test_base_manager():
     t0.dependencies = []
     m.run()
     
+def test_manager_initialization():
+
+    # Create a "diamond" DAG
+    t0 = MinimalTask("t0")
+    t1 = MinimalTask("t1", inputs={"input": t0.outputs["output"]})
+    t2 = MinimalTask("t2", inputs={"input": t0.outputs["output"]})
+    t3 = MinimalTask("t3", inputs={"input1": t1.outputs["output"],
+                                   "input2": t2.outputs["output"]}
+                     )
+    m = MinimalManager(t3)
+    m.run()
+    assert t0.state == TaskState.COMPLETE
+    assert t1.state == TaskState.COMPLETE
+    assert t2.state == TaskState.COMPLETE
+    assert t3.state == TaskState.COMPLETE
+
+

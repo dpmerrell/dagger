@@ -20,7 +20,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 
 from dagger.abstract.helpers import cycle_exists, construct_adj_list 
-from dagger.abstract import TaskState, StartTask
+from dagger.abstract import TaskState 
 
 class AbstractManager(ABC):
     """
@@ -46,9 +46,8 @@ class AbstractManager(ABC):
 
         # Construct and store an adjacency list
         # representation of the DAG
-        adj_list, start_task = construct_adj_list(end_task, StartTask())
+        adj_list = construct_adj_list(end_task)
         self.adj_list = adj_list
-        self.start_task = start_task
 
         # These data structures capture the state of
         # the DAG execution algorithm (i.e., `run`).
@@ -65,7 +64,7 @@ class AbstractManager(ABC):
         are no circular dependencies.
         """
         if cycle_exists(self.end_task):
-            raise ValueError("Workflow ending at {self.end_task.identifier} is not a DAG")
+            raise ValueError("Workflow ending at {self.end_task.identifier} contains a cycle!")
 
     def run(self):
         """
@@ -85,15 +84,9 @@ class AbstractManager(ABC):
             self._launch_ready_tasks(self.ready)
 
             # While there are 'running' tasks...
-            counter = 10
             while self.running:
-                print("RUNNING: ", [r.identifier for r in self.running])
-                counter -= 1
-                if counter < 0:
-                    raise ValueError()
                 # ...check if any of the running tasks are finished
                 finished_tasks = self._get_finished_tasks(self.running)
-                print("FINISHED: ", [f.identifier for f in finished_tasks])
                 if finished_tasks:
                     # If they are, then wrap them up. 
                     self._wrapup_finished_tasks(finished_tasks)
@@ -123,7 +116,7 @@ class AbstractManager(ABC):
             - `ready` must be a subset of `waiting`
         """
         # Traverse the DAG "backwards", starting at `end_task`
-
+        self._rec_initialize_state(self.end_task, set(), verify_tasks=verify_tasks)
         return
 
     def _rec_initialize_state(self, task, visited, verify_tasks=True):
@@ -132,15 +125,14 @@ class AbstractManager(ABC):
         # (that haven't been visited yet)
         for d in task.dependencies:
             if d not in visited:
-                _rec_initialize_state(self, d, visited, verify_tasks=verify_tasks)
+                self._rec_initialize_state(d, visited, verify_tasks=verify_tasks)
 
         # If any dependencies are WAITING or FAILED,
         # then this task is WAITING.
-        if any((((d in self.waiting) or (d in self.failed)) for d in task.dependencies)):
+        if any((((d in self.waiting) or (d in self.failed) or (d in self.ready)) for d in task.dependencies)):
             task.update_state(TaskState.WAITING)
             self.waiting.add(task)
-        # Otherwise, assign the task to the 
-        # appropriate set
+        # Otherwise, assign the task to the appropriate set
         else:
             # Shallow check whether the task is FAILED
             if task.state == TaskState.FAILED:
@@ -152,14 +144,13 @@ class AbstractManager(ABC):
                         self.complete.add(task)
                     else:
                         task.update_state(TaskState.WAITING)
-                        self.waiting.add(task)
+                        self.ready.append(task)
                 else: # Just a shallow check of this task's state
                     if task.state == TaskState.COMPLETE:
                         self.complete.add(task)
                     else:
                         task.update_state(TaskState.WAITING)
-                        self.waiting.add(task)
-
+                        self.ready.append(task)
 
         # Mark this task as visited
         visited.add(task)
@@ -185,7 +176,6 @@ class AbstractManager(ABC):
         # Ensure the finished tasks' states
         # are up-to-date.
         for t in finished_tasks:
-
             # Sync up the task's state
             t_s = self._get_running_task_state(t)
             t.update_state(t_s)
@@ -215,13 +205,15 @@ class AbstractManager(ABC):
         # Whenever a finished task has a child whose
         # parents are all COMPLETE, then move the
         # child to the `ready` list.
+        children = set()
         for ft in finished_tasks:
-            children = self.adj_list[ft]
-            for c in children:
-                parents = c.dependencies
-                if all((p in self.complete for p in parents)):
-                    self.ready.append(c)
-                    self.waiting.remove(c)
+            children |= set(self.adj_list[ft])
+
+        for c in list(children):
+            parents = c.dependencies
+            if all((p in self.complete for p in parents)):
+                self.ready.append(c)
+                self.waiting.remove(c)
         
     def _launch_ready_tasks(self, ready_tasks):
         """

@@ -65,31 +65,28 @@ def _rec_cycle_exists(task, ancestors, visited):
     visited.add(task.identifier)
     return False
 
-def construct_adj_list(task, start_node):
+def construct_adj_list(end_task):
     """
     Construct an 'adjacency list' representation of 
-    the task DAG; a "start_node" must be specified;
-    in practice this is a StartTask.
+    the task DAG
     """
     adj_list = defaultdict(set)
 
-    _rec_construct_adj_list(task, adj_list, start_node, visited=set())
+    _rec_construct_adj_list(end_task, adj_list, visited=set())
     adj_list = {k: list(v) for k, v in adj_list.items()}
-    return adj_list, start_node
+    adj_list[end_task] = []
 
-def _rec_construct_adj_list(task, adj_list, start_node, visited=set()):
+    return adj_list
+
+def _rec_construct_adj_list(task, adj_list, visited=set()):
     """
     Recursive core of `construct_adj_list`
     """
-    # base case: no dependencies
-    if len(task.dependencies) == 0:
-        adj_list[start_node].add(task)
-
     # Recurrent case: has dependencies
     for dep in task.dependencies:
+        adj_list[dep].add(task)
         if dep not in visited:
-            adj_list[dep].add(task)
-            _rec_construct_adj_list(dep, adj_list, start_node, visited=visited)
+            _rec_construct_adj_list(dep, adj_list, visited=visited)
 
     visited.add(task)
 

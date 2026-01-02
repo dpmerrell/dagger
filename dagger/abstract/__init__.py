@@ -1,6 +1,6 @@
 
 from dagger.abstract.communicator import AbstractCommunicator
-from dagger.abstract.task import AbstractTask, TaskState, StartTask
+from dagger.abstract.task import AbstractTask, TaskState 
 from dagger.abstract.workflow_manager import AbstractManager
 from dagger.abstract.datum import AbstractDatum, DatumState
 
