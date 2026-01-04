@@ -115,7 +115,15 @@ class AbstractManager(ABC):
         * A task is `ready` iff all of its dependencies are complete 
             - `ready` must be a subset of `waiting`
         """
-        # Traverse the DAG "backwards", starting at `end_task`
+        # Set the state collections to empty
+        self.waiting = set()
+        self.ready = []
+        self.running = []
+        self.complete = set()
+        self.failed = set()
+
+        # Traverse the DAG "backwards", starting at `end_task`.
+        # Update the collections according to the logic given above.
         self._rec_initialize_state(self.end_task, set(), verify_tasks=verify_tasks)
         return
 

@@ -189,11 +189,33 @@ def test_manager_initialization():
     t3 = MinimalTask("t3", inputs={"input1": t1.outputs["output"],
                                    "input2": t2.outputs["output"]}
                      )
+    # Create a WorkflowManager
     m = MinimalManager(t3)
+
+    # Running it should set all tasks to COMPLETE
     m.run()
     assert t0.state == TaskState.COMPLETE
     assert t1.state == TaskState.COMPLETE
     assert t2.state == TaskState.COMPLETE
     assert t3.state == TaskState.COMPLETE
 
+    # Setting one task to FAILED should
+    # result in its downstream tasks reverting
+    # to WAITING
+    t2.update_state(TaskState.FAILED)
+    m.initialize_workflow_state()
+    assert t0.state == TaskState.COMPLETE
+    assert t1.state == TaskState.COMPLETE
+    assert t2.state == TaskState.FAILED
+    assert t3.state == TaskState.WAITING
+
+    # The state of the WorkflowManager should
+    # reflect this situation
+    assert m.waiting == set([t3])
+    print([t.identifier for t in m.complete])
+    print([t0.identifier, t1.identifier])
+    assert m.complete == set([t0, t1])
+    assert m.failed == set([t2])
+
+    # 
 
