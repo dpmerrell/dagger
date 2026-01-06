@@ -10,6 +10,7 @@ from dagger.abstract import AbstractDatum
 
 from pathvalidate import is_valid_filepath
 from os import path
+import platform
 import os
 
 import time
@@ -76,7 +77,7 @@ class FileDatum(AbstractDatum):
         Check whether the Datum's pointer is a string containing
         a valid filepath
         """
-        return is_valid_filepath(self.pointer)
+        return is_valid_filepath(self.pointer, platform=platform.system())
 
     def _clear_logic(self):
         """

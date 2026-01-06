@@ -1,8 +1,8 @@
 """
-    core/helpers.py
+    abstract/helpers.py
     (c) David Merrell 2025
 
-    Helper functions for the "core" implementation.
+    Helper functions for the abstract base classes. 
 
     Many of these functions are meant to be used in 
     methods for Task, WorkflowManager, and Datum
@@ -23,6 +23,7 @@ def collect_dependencies(input_dict, dependency_ls):
     parents = [inp.parent for inp in input_dict.values()]
     deps = set(dependency_ls) | set((p for p in parents if p is not None))
     return list(deps)
+
 
 ################################################
 # Workflow manager helpers

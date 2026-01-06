@@ -8,9 +8,9 @@
 """
 
 from dagger.abstract import AbstractManager, AbstractCommunicator
-from dagger.core.helpers import resources_available, \
-                                increment_resources, \
-                                decrement_resources
+from dagger.abstract.helpers import resources_available, \
+                                    increment_resources, \
+                                    decrement_resources
 
 from loky import get_reusable_executor
 from multiprocessing import Manager 
@@ -46,10 +46,10 @@ class WorkflowManager(AbstractManager):
     WorkflowManager implementation that executes tasks
     with multiprocess parallelism. Relies on
     the `loky` reusable executor as a backend.
-
-    The user may specify an arbitrary dictionary of resource constraints
-    that the running tasks must satisfy. Uses a greedy algorithm
-    to launch tasks subject to these constraints.
+    
+    Uses a greedy algorithm to launch tasks subject to resource 
+    constraints. The user may specify a dictionary of arbitrary
+    resource constraints that the running tasks must satisfy. 
     """
 
     def __init__(self, root_task, resources={}, executor_kwargs={}):
