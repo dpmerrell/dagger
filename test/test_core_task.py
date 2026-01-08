@@ -48,10 +48,10 @@ def test_functiontask_constructor():
                                                    }
                      )
     # Output initialization
-    assert isinstance(t0.outputs["sum"], MemoryDatum)
-    assert t0.outputs["sum"].state == DatumState.EMPTY 
-    assert isinstance(t0.outputs["diff"], MemoryDatum)
-    assert t0.outputs["diff"].state == DatumState.EMPTY 
+    assert isinstance(t0["sum"], MemoryDatum)
+    assert t0["sum"].state == DatumState.EMPTY 
+    assert isinstance(t0["diff"], MemoryDatum)
+    assert t0["diff"].state == DatumState.EMPTY 
     
     # Check quickhash properties
     hash1 = t0.quickhash
@@ -75,24 +75,24 @@ def test_functiontask_workflow():
     t0 = FunctionTask("t0", plus1, inputs={"x": xdatum},
                                    outputs={"output": None}
                       )
-    t1 = FunctionTask("t1", plus1, inputs={"x": t0.outputs["output"]},
+    t1 = FunctionTask("t1", plus1, inputs={"x": t0["output"]},
                                    outputs={"output": None}
                       )
-    t2 = FunctionTask("t2", double, inputs={"x": t0.outputs["output"]},
+    t2 = FunctionTask("t2", double, inputs={"x": t0["output"]},
                                     outputs={"output": None}
                       )
-    t3 = FunctionTask("t3", multiply, inputs={"x": t1.outputs["output"],
-                                              "y": t2.outputs["output"]
+    t3 = FunctionTask("t3", multiply, inputs={"x": t1["output"],
+                                              "y": t2["output"]
                                              },
                                       outputs={"output": None}
                      )
 
     m = MinimalManager(t3)
     m.run()
-    assert t0.outputs["output"].pointer == 4
-    assert t1.outputs["output"].pointer == 5
-    assert t2.outputs["output"].pointer == 8
-    assert t3.outputs["output"].pointer == 40
+    assert t0["output"].pointer == 4
+    assert t1["output"].pointer == 5
+    assert t2["output"].pointer == 8
+    assert t3["output"].pointer == 40
 
     return
 
@@ -118,12 +118,12 @@ def test_pkltask_constructor():
                                               }
                 )
     # Output initialization
-    assert isinstance(t0.outputs["sum"], FileDatum)
-    assert t0.outputs["sum"].state == DatumState.POPULATED
-    assert t0.outputs["sum"].pointer == "test/sum.pkl"
-    assert isinstance(t0.outputs["diff"], FileDatum)
-    assert t0.outputs["diff"].state == DatumState.POPULATED
-    assert t0.outputs["diff"].pointer == "test/diff.pkl"
+    assert isinstance(t0["sum"], FileDatum)
+    assert t0["sum"].state == DatumState.POPULATED
+    assert t0["sum"].pointer == "test/sum.pkl"
+    assert isinstance(t0["diff"], FileDatum)
+    assert t0["diff"].state == DatumState.POPULATED
+    assert t0["diff"].pointer == "test/diff.pkl"
     
     # Check quickhash properties
     hash1 = t0.quickhash
@@ -139,12 +139,12 @@ def test_pkltask_constructor():
     assert Path("test/sum.pkl").exists()
     assert Path("test/diff.pkl").exists()
 
-    assert isinstance(t0.outputs["sum"], FileDatum)
-    assert t0.outputs["sum"].state == DatumState.AVAILABLE
-    assert t0.outputs["sum"].pointer == "test/sum.pkl"
-    assert isinstance(t0.outputs["diff"], FileDatum)
-    assert t0.outputs["diff"].state == DatumState.AVAILABLE
-    assert t0.outputs["diff"].pointer == "test/diff.pkl"
+    assert isinstance(t0["sum"], FileDatum)
+    assert t0["sum"].state == DatumState.AVAILABLE
+    assert t0["sum"].pointer == "test/sum.pkl"
+    assert isinstance(t0["diff"], FileDatum)
+    assert t0["diff"].state == DatumState.AVAILABLE
+    assert t0["diff"].pointer == "test/diff.pkl"
    
     # Clean up
     Path("test/sum.pkl").unlink()
@@ -161,27 +161,27 @@ def test_pkltask_workflow():
     t0 = PklTask("t0", plus1, inputs={"x": xdatum},
                               outputs={"output": "test/t0_output.pkl"}
               )
-    t1 = PklTask("t1", plus1, inputs={"x": t0.outputs["output"]},
+    t1 = PklTask("t1", plus1, inputs={"x": t0["output"]},
                               outputs={"output": "test/t1_output.pkl"}
               )
-    t2 = PklTask("t2", double, inputs={"x": t0.outputs["output"]},
+    t2 = PklTask("t2", double, inputs={"x": t0["output"]},
                                outputs={"output": "test/t2_output.pkl"}
               ) 
-    t3 = PklTask("t3", multiply, inputs={"x": t1.outputs["output"],
-                                         "y": t2.outputs["output"]
+    t3 = PklTask("t3", multiply, inputs={"x": t1["output"],
+                                         "y": t2["output"]
                                         },
                                  outputs={"output": "test/t3_output.pkl"}
                      )
 
     m = MinimalManager(t3)
     m.run()
-    assert pickle.load(open(t0.outputs["output"].pointer, "rb")) == 4
-    assert pickle.load(open(t1.outputs["output"].pointer, "rb")) == 5
-    assert pickle.load(open(t2.outputs["output"].pointer, "rb")) == 8
-    assert pickle.load(open(t3.outputs["output"].pointer, "rb")) == 40
+    assert pickle.load(open(t0["output"].pointer, "rb")) == 4
+    assert pickle.load(open(t1["output"].pointer, "rb")) == 5
+    assert pickle.load(open(t2["output"].pointer, "rb")) == 8
+    assert pickle.load(open(t3["output"].pointer, "rb")) == 40
 
-    Path(t2.outputs["output"].pointer).unlink()
-    Path(t3.outputs["output"].pointer).unlink()
+    Path(t2["output"].pointer).unlink()
+    Path(t3["output"].pointer).unlink()
 
     m.end_task.sync()
     assert t0.state == TaskState.COMPLETE
@@ -189,8 +189,8 @@ def test_pkltask_workflow():
     assert t2.state == TaskState.WAITING
     assert t3.state == TaskState.WAITING
 
-    Path(t0.outputs["output"].pointer).unlink()
-    Path(t1.outputs["output"].pointer).unlink()
+    Path(t0["output"].pointer).unlink()
+    Path(t1["output"].pointer).unlink()
 
     return
 

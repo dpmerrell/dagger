@@ -253,6 +253,11 @@ class AbstractTask(ABC):
         """
         raise NotImplementedError("Subclasses of AbstractTask must implement `_fail_cleanup`")
 
+    def __getitem__(self, key):
+        """
+        Get a Task output by name.
+        """
+        return self.outputs[key]
 
     def sync(self, recursive=True, visited=None):
         """

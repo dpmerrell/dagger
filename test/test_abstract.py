@@ -14,7 +14,7 @@ class MinimalTask(AbstractTask):
         return self.identifier
 
     def _run_logic(self):
-        self.outputs["output"].populate(f"result of task {self.identifier}")
+        self["output"].populate(f"result of task {self.identifier}")
         return
 
     def _interrupt_cleanup(self):
@@ -32,7 +32,7 @@ def test_base_task():
     # * t3 uses the `output` of t1; and `depends` on t2
     t1 = MinimalTask("t1")
     t2 = MinimalTask("t2", dependencies=[t1])
-    t3 = MinimalTask("t3", inputs={"input": t1.outputs["output"]},
+    t3 = MinimalTask("t3", inputs={"input": t1["output"]},
                            dependencies=[t2])
 
     # Check basic properties of the constructed tasks
@@ -64,7 +64,7 @@ def test_base_task():
     t2.run()
     assert t3.is_ready()
     t3.run()
-    assert t3.outputs["output"].pointer == "result of task t3"
+    assert t3["output"].pointer == "result of task t3"
 
 #####################
 # TASK FAILURE 
@@ -153,7 +153,7 @@ def test_abstract_manager():
     t = t0
     for i in range(9):
         t_new = MinimalTask(f"t{i+1}",
-                            inputs={"input": t.outputs["output"]}
+                            inputs={"input": t["output"]}
                             )
         t = t_new
     m = MinimalManager(t)
@@ -184,10 +184,10 @@ def test_manager_initialization():
 
     # Create a "diamond" DAG
     t0 = MinimalTask("t0")
-    t1 = MinimalTask("t1", inputs={"input": t0.outputs["output"]})
-    t2 = MinimalTask("t2", inputs={"input": t0.outputs["output"]})
-    t3 = MinimalTask("t3", inputs={"input1": t1.outputs["output"],
-                                   "input2": t2.outputs["output"]}
+    t1 = MinimalTask("t1", inputs={"input": t0["output"]})
+    t2 = MinimalTask("t2", inputs={"input": t0["output"]})
+    t3 = MinimalTask("t3", inputs={"input1": t1["output"],
+                                   "input2": t2["output"]}
                      )
     # Create a WorkflowManager
     m = MinimalManager(t3)
