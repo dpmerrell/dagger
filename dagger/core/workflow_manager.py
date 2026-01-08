@@ -52,14 +52,14 @@ class WorkflowManager(AbstractManager):
     resource constraints that the running tasks must satisfy. 
     """
 
-    def __init__(self, root_task, resources={}, executor_kwargs={}):
+    def __init__(self, root_task, resources=None, executor_kwargs=None):
         """
         WorkflowManager implementation that executes tasks
         with multiprocess parallelism. Relies on
         the `loky` reusable executor as a backend.
         """
         super().__init__(root_task)
-        self.resources = resources
+        self.resources = {} if resources is None else resources
 
         # 'Running' tasks are a special case, since
         # they're actually running in separate processes and
@@ -69,8 +69,8 @@ class WorkflowManager(AbstractManager):
 
         # A loky `executor` object launches processes;
         # a `multiprocessing.Manager` object enables shared state between them.
-        self._executor_kwargs = executor_kwargs
-        self.executor = get_reusable_executor(**executor_kwargs)
+        self._executor_kwargs = {} if executor_kwargs is None else executor_kwargs
+        self.executor = get_reusable_executor(**(self._executor_kwargs))
         self.mp_manager = Manager() 
         return
 

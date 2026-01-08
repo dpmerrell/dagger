@@ -73,13 +73,13 @@ def construct_adj_list(end_task):
     """
     adj_list = defaultdict(set)
 
-    _rec_construct_adj_list(end_task, adj_list, visited=set())
+    _rec_construct_adj_list(end_task, adj_list, set())
     adj_list = {k: list(v) for k, v in adj_list.items()}
     adj_list[end_task] = []
 
     return adj_list
 
-def _rec_construct_adj_list(task, adj_list, visited=set()):
+def _rec_construct_adj_list(task, adj_list, visited):
     """
     Recursive core of `construct_adj_list`
     """
@@ -87,7 +87,7 @@ def _rec_construct_adj_list(task, adj_list, visited=set()):
     for dep in task.dependencies:
         adj_list[dep].add(task)
         if dep not in visited:
-            _rec_construct_adj_list(dep, adj_list, visited=visited)
+            _rec_construct_adj_list(dep, adj_list, visited)
 
     visited.add(task)
 

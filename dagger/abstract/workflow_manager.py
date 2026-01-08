@@ -1,5 +1,5 @@
 """
-    workflow_manager.py
+    abstract/workflow_manager.py
     (c) 2025 David Merrell
 
     Definition of AbstractManager, an abstract base class
@@ -66,7 +66,7 @@ class AbstractManager(ABC):
         if cycle_exists(self.end_task):
             raise ValueError("Workflow ending at {self.end_task.identifier} contains a cycle!")
 
-    def run(self):
+    def run(self, sync=True):
         """
         Execute the DAG of tasks terminating at `end_task`.
 
@@ -80,7 +80,7 @@ class AbstractManager(ABC):
         try:
             # Initialize workflow state, and
             # then start launching ready tasks
-            self.initialize_workflow_state()
+            self.initialize_workflow_state(sync=sync)
             self._launch_ready_tasks(self.ready)
 
             # While there are 'running' tasks...
@@ -102,18 +102,10 @@ class AbstractManager(ABC):
             self._interrupt()
             raise KeyboardInterrupt
 
-    def initialize_workflow_state(self, verify_tasks=True):
+    def initialize_workflow_state(self, sync=True):
         """
-        Traverse the workflow's DAG, 
-        assess the state of its tasks, and 
-        update its `waiting`, `complete`,`failed`, `ready` attributes.
-
-        Some logic to enforce:
-        * All tasks must be in exactly one of `waiting`, `complete`, or `failed`
-            - When in doubt, a task should be in `waiting`
-        * All tasks downstream of a waiting task or failed task should themselves be waiting
-        * A task is `ready` iff all of its dependencies are complete 
-            - `ready` must be a subset of `waiting`
+        Traverse the workflow's DAG and update its 
+        `waiting`, `complete`,`failed`, `ready` collections.
         """
         # Set the state collections to empty
         self.waiting = set()
@@ -122,43 +114,41 @@ class AbstractManager(ABC):
         self.complete = set()
         self.failed = set()
 
+        # Sync up the tasks and datums
+        if sync:
+            self.end_task.sync()
+
         # Traverse the DAG "backwards", starting at `end_task`.
-        # Update the collections according to the logic given above.
-        self._rec_initialize_state(self.end_task, set(), verify_tasks=verify_tasks)
+        # Update the workflow algorithm state collections.
+        self._rec_initialize_state(self.end_task, set())
         return
 
-    def _rec_initialize_state(self, task, visited, verify_tasks=True):
-
+    def _rec_initialize_state(self, task, visited):
+        """
+        Recursively assign workflow Tasks to the 
+        workflow algorithm state collections
+        (waiting, complete, failed, ready)
+        """
         # Initialize state for all dependencies
         # (that haven't been visited yet)
         for d in task.dependencies:
             if d not in visited:
-                self._rec_initialize_state(d, visited, verify_tasks=verify_tasks)
+                self._rec_initialize_state(d, visited)
 
-        # If any dependencies are WAITING or FAILED,
-        # then this task is WAITING.
-        if any((((d in self.waiting) or (d in self.failed) or (d in self.ready)) for d in task.dependencies)):
-            task.update_state(TaskState.WAITING)
-            self.waiting.add(task)
-        # Otherwise, assign the task to the appropriate set
-        else:
-            # Shallow check whether the task is FAILED
-            if task.state == TaskState.FAILED:
+        # Assign the task to the appropriate set
+        match task.state:
+            case TaskState.FAILED:
                 self.failed.add(task)
-            # At this point, the task is putatively COMPLETE
-            else:
-                if verify_tasks: # Verify whether it's actually complete
-                    if task.verify_complete():
-                        self.complete.add(task)
-                    else:
-                        task.update_state(TaskState.WAITING)
-                        self.ready.append(task)
-                else: # Just a shallow check of this task's state
-                    if task.state == TaskState.COMPLETE:
-                        self.complete.add(task)
-                    else:
-                        task.update_state(TaskState.WAITING)
-                        self.ready.append(task)
+            case TaskState.COMPLETE:
+                self.complete.add(task)
+            case TaskState.WAITING:
+                # If a waiting task's dependencies
+                # are all complete, then it belongs
+                # in `ready`
+                if all(((d in self.complete) for d in task.dependencies)):
+                    self.ready.append(task)
+                else:
+                    self.waiting.add(task)
 
         # Mark this task as visited
         visited.add(task)

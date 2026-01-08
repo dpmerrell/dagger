@@ -6,7 +6,7 @@
     AbstractDatum class.
 """
 
-from dagger.abstract import AbstractDatum
+from dagger.abstract.datum import AbstractDatum, DatumState
 
 from pathvalidate import is_valid_filepath
 from os import path
@@ -27,11 +27,11 @@ class MemoryDatum(AbstractDatum):
         """
         Since the pointer is itself the data, 
         it is available as long as the Datum
-        is POPULATED. The `_verify_available()` method
+        is not EMPTY. The `verify_available()` method
         already checks this, so the 
         `_verify_available_logic()` method returns True always.
         """
-        return True
+        return self.state != DatumState.EMPTY
 
     def _validate_format_logic(self):
         """
@@ -50,13 +50,10 @@ class MemoryDatum(AbstractDatum):
     def _quickhash(self):
         """
         For a python object in memory, we use
-        (A) its location in memory
-        and
-        (B) its string representation (from __str__()).
-        Should guarantee uniqueness and attain
-        'good enough' modification properties.
+        its string representation (from __str__()).
+        Should attain 'good enough' modification properties.
         """
-        return hash((id(self.pointer), str(self.pointer)))
+        return hash(str(self.pointer))
 
 
 

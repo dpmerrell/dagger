@@ -15,8 +15,10 @@
 from dagger.abstract import AbstractTask, TaskState
 from dagger.core import FileDatum, MemoryDatum
 from pathvalidate import is_valid_filepath
+from pathlib import Path
 import platform
 
+import pickle
 import inspect
 
 class FunctionTask(AbstractTask):
@@ -69,8 +71,11 @@ class FunctionTask(AbstractTask):
         for k, datum in self.outputs.items():
             if isinstance(datum, MemoryDatum):
                 datum.populate(output_dict[k])
+            # For FunctionTask, whenever an output is a 
+            # FileDatum, we treat it as a pkl file.
             elif isinstance(datum, FileDatum):
-                datum.populate
+                with open(datum.pointer, "wb") as f:
+                    pickle.dump(output_dict[k], f)
         return
 
     def _interrupt_cleanup(self):
@@ -100,14 +105,14 @@ class PklTask(FunctionTask):
         os_name = platform.system() 
         for k, v in output_dict.items():
             # Check if this is the path for a pkl file
+
             if isinstance(v, str) and \
-              is_valid_pathname(v, platform=os_name) and \
-              Path(v).suffix.lower() == "pkl":
+              is_valid_filepath(v, platform=os_name) and \
+              Path(v).suffix.lower() == ".pkl":
                 result[k] = FileDatum(parent=self,
                                       pointer=v)
-
             # Check if this is a FileDatum
-            if isinstance(v, FileDatum):
+            elif isinstance(v, FileDatum):
                 v.parent = self 
                 result[k] = v
             # Can override default behavior by
@@ -167,8 +172,8 @@ def collect_inputs(task, input_dict):
                 if is_valid_filepath(v.pointer, platform=os_name):
                     # If it points to a pickle, then
                     # load the pickle
-                    if Path(v.pointer).suffix.lower() == "pkl":
-                        with open(v.pointer, "r") as f:
+                    if Path(v.pointer).suffix.lower() == ".pkl":
+                        with open(v.pointer, "rb") as f:
                             result[k] = pickle.load(f)
                     # Otherwise, simply return the filepath.
                     else:

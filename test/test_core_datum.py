@@ -16,13 +16,13 @@ def test_memorydatum():
     assert d1.pointer is None
     assert d1.quickhash is None
 
-    assert d2.state == DatumState.POPULATED
-    assert d2.pointer is ls
-    assert d2.quickhash is None
+    assert d2.state == DatumState.AVAILABLE
+    assert d2.pointer == ls
+    assert d2.quickhash == d2._quickhash()
    
-    assert d3.state == DatumState.POPULATED
+    assert d3.state == DatumState.AVAILABLE
     assert d3.pointer is None
-    assert d3.quickhash is None
+    assert d3.quickhash == d3._quickhash()
 
     # populate
     d1.populate(st)
@@ -35,9 +35,9 @@ def test_memorydatum():
     d3._validate_format()
 
     # verify_available
-    assert d1._verify_available()
-    assert d2._verify_available()
-    assert d3._verify_available()
+    assert d1.verify_available()
+    assert d2.verify_available()
+    assert d3.verify_available()
 
     assert d1.state == DatumState.AVAILABLE
     assert d2.state == DatumState.AVAILABLE
@@ -49,10 +49,10 @@ def test_memorydatum():
 
     # verify_quickhash
     true_quickhash = d1.quickhash
-    assert d1._verify_quickhash()
+    assert d1._verify_quickhash(update=True)
     d1.quickhash = "abc123"
-    assert not d1._verify_quickhash()
-    assert d1._verify_quickhash
+    assert not d1._verify_quickhash(update=True)
+    assert d1._verify_quickhash()
     assert d1.quickhash == true_quickhash
 
     # clear
@@ -89,11 +89,11 @@ def test_diskdatum():
     d2 = FileDatum(pointer=existing_path)
 
     assert d1.state == DatumState.EMPTY
-    assert d2.state == DatumState.POPULATED
+    assert d2.state == DatumState.AVAILABLE
     assert d2.pointer is existing_path
 
     assert d1.quickhash is None
-    assert d2.quickhash is None
+    assert d2.quickhash == d2._quickhash()
 
     # populate
     d1.populate(nonexistent_path)
@@ -116,9 +116,9 @@ def test_diskdatum():
         assert False
 
     # verify_available
-    assert not d1._verify_available()
+    assert not d1.verify_available()
     assert d1.state == DatumState.POPULATED
-    assert d2._verify_available()
+    assert d2.verify_available()
     assert d2.state == DatumState.AVAILABLE
 
     assert d1.quickhash is None
@@ -126,12 +126,11 @@ def test_diskdatum():
 
     # verify_quickhash
     true_quickhash = d2.quickhash
-    assert d2._verify_quickhash()
+    assert d2._verify_quickhash(update=True)
     d2.quickhash = "abc123"
-    assert not d2._verify_quickhash()
+    assert not d2._verify_quickhash(update=True)
     assert d2.quickhash == true_quickhash
-    assert d2._verify_quickhash()
-
+    assert d2._verify_quickhash(update=True)
 
     # clear
     assert path.exists(existing_path)

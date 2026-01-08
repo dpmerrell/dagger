@@ -118,6 +118,7 @@ class AbstractDatum(ABC):
         self.quickhash = None
         if "pointer" in kwargs.keys():
             self.populate(kwargs["pointer"])
+            self.verify_available(update=True)
 
     def populate(self, pointer):
         """
@@ -150,9 +151,9 @@ class AbstractDatum(ABC):
         """
         raise NotImplementedError("Subclasses of `AbstractDatum` must implement `_validate_format_logic()`")
 
-    def _verify_available(self):
+    def verify_available(self, update=True):
         """
-        verify whether the Datum points to data that is 
+        Verify whether the Datum points to data that is 
         available for use. If it is, then set
         the state to AVAILABLE. Return a bool indicating
         whether the data is available.
@@ -160,9 +161,10 @@ class AbstractDatum(ABC):
         I.e., the Datum is POPULATED and its `data` points to
         data that exists.
         """
-        if (self.state == DatumState.POPULATED) and self._verify_available_logic():
-            self.state = DatumState.AVAILABLE
-            self.quickhash = self._quickhash()
+        if (self.state != DatumState.EMPTY) and self._verify_available_logic():
+            if update:
+                self.state = DatumState.AVAILABLE
+                self.quickhash = self._quickhash()
             return True
         else:
             return False
@@ -180,7 +182,7 @@ class AbstractDatum(ABC):
         If the Datum is AVAILABLE, clear away any persistent data
         and set its state to POPULATED.
         """
-        if self.state == DatumState.AVAILABLE:
+        if self.state != DatumState.EMPTY:
             self._clear_logic()
             self.state = DatumState.POPULATED
             self.quickhash = None
@@ -193,7 +195,7 @@ class AbstractDatum(ABC):
         """
         raise NotImplementedError("Subclasses of `AbstractDatum` must implement `_clear_logic()`")
 
-    def _verify_quickhash(self):
+    def _verify_quickhash(self, update=False):
         """
         Compute this Datum's quickhash and check whether it
         matches the Datum's stored quickhash.
@@ -201,11 +203,11 @@ class AbstractDatum(ABC):
         If they don't match, update the quickhash and return False.
         """
         new_hash = self._quickhash()
-        print(new_hash)
         if new_hash == self.quickhash:
             return True
         else:
-            self.quickhash = new_hash
+            if update:
+                self.quickhash = new_hash
             return False
 
     @abstractmethod
@@ -218,4 +220,29 @@ class AbstractDatum(ABC):
         """
         raise NotImplementedError("Subclasses of `AbstractDatum` must implement `_quickhash()`")
 
+    def sync(self):
+        """
+        Sync up the state of a Datum based on 
+        (i) its pointer value
+        (ii) whether its underlying data is available 
+        (iii) its quickhash
+        """
+
+        if not self._validate_format_logic():
+            self.pointer = None
+            self.state = DatumState.EMPTY
+        else: # Datum is populated
+            if self._verify_available_logic():
+                # Datum is available. Is it up-to-date?
+                if self._verify_quickhash(update=True):
+                    # If so, then mark this available
+                    self.state = DatumState.AVAILABLE
+                else:
+                    print(f"\t\t\t{self.pointer} Failed quickhash check!")
+                    # If not up-to-date, then we clear the Datum
+                    # (this also sets the state to populated)
+                    self.clear()
+            else:
+                print(f"\t\t\t{self.pointer} Failed `verify_available_logic`!")
+                self.state = DatumState.POPULATED
 
