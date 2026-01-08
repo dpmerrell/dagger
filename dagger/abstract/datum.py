@@ -110,7 +110,8 @@ class AbstractDatum(ABC):
 
         If an optional `pointer` kwarg is provided, 
         the Datum is populated with that pointer to 
-        the underlying data.
+        the underlying data. And then we check whether
+        the underlying data is already available.
         """
         self.state = DatumState.EMPTY
         self.parent = parent

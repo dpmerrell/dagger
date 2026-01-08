@@ -4,6 +4,7 @@ from dagger.core import FunctionTask, PklTask,\
 
 from dagger.abstract import AbstractDatum, DatumState, TaskState
 from pathlib import Path
+import pickle
 
 ###########################################
 # Some simple functions
@@ -100,7 +101,6 @@ def test_functiontask_workflow():
 # TESTS: PklTask
 ########################################### 
 
-import pickle
 
 def test_pkltask_constructor():
 
@@ -133,8 +133,16 @@ def test_pkltask_constructor():
     t0.function = sum_and_diff
     assert t0._quickhash() == hash1
 
-    # What happens when we do this?
+    # Run the Task
     t0.run()
+
+    # Pickle the task
+    with open("test/temp.pkl", "wb") as f:
+        pickle.dump(t0, f)
+
+    with open("test/temp.pkl", "rb") as f:
+        t0_unpickled = pickle.load(f)
+    Path("test/temp.pkl").unlink()
 
     assert Path("test/sum.pkl").exists()
     assert Path("test/diff.pkl").exists()

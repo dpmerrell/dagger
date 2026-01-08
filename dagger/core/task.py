@@ -15,11 +15,12 @@
 from dagger.abstract import AbstractTask, TaskState
 from dagger.core import FileDatum, MemoryDatum
 from pathvalidate import is_valid_filepath
-from pathlib import Path
-import platform
 
-import pickle
+from pathlib import Path
+import subprocess
+import platform
 import inspect
+import pickle
 
 class FunctionTask(AbstractTask):
     """
@@ -66,7 +67,7 @@ class FunctionTask(AbstractTask):
         return hash((id(self), inspect.getsource(self.function)))
 
     def _run_logic(self):
-        inputs = collect_inputs(self, self.inputs)
+        inputs = collect_function_inputs(self.inputs)
         output_dict = self.function(**inputs)
         for k, datum in self.outputs.items():
             if isinstance(datum, MemoryDatum):
@@ -104,8 +105,8 @@ class PklTask(FunctionTask):
         result = {}
         os_name = platform.system() 
         for k, v in output_dict.items():
-            # Check if this is the path for a pkl file
 
+            # Check if this is the path for a pkl file
             if isinstance(v, str) and \
               is_valid_filepath(v, platform=os_name) and \
               Path(v).suffix.lower() == ".pkl":
@@ -130,14 +131,58 @@ class ScriptTask(AbstractTask):
     A task that executes a command line script.
     Outputs are local files.
     """
+
+    def __init__(self, identifier, script, **kwargs):
+
+        if not isinstance(script, str):
+            raise ValueError("`script` must be a string")
+        self.script = script
+
+        super().__init__(identifier, **kwargs)
+        return
+
+
     def _initialize_outputs(self, output_dict):
-        return {"output": MemoryDatum(parent=self)}
+        """
+        Convert the values of output_dict to Datum objects.
+        The values must always be strings containing
+        valid filepaths.
+
+        TODO: handle a more arbitrary class of filepath glob *patterns*
+              matching one or more files
+        """
+        result = {}
+        os_name = platform.system() 
+        for k, v in output_dict.items():
+            if isinstance(v, str) and is_valid_filepath(v, platform=os_name):
+                result[k] = FileDatum(parent=self,
+                                      pointer=v)
+            else:
+                raise ValueError(f"Can't construct output '{k}': {v} for ScriptTask {self.identifer}. {v} is not a valid filepath.")
+
+        return result
 
     def _quickhash(self):
-        return self.identifier
+        return hash((id(self), self.script))
 
     def _run_logic(self):
-        self.outputs["output"].populate(f"result of task {self.identifier}")
+        """
+        Substitute the input and output strings into the
+        script and execute it.
+
+        By assumption, all inputs and outputs are FileDatums;
+        the inputs are known to exist;
+        and the outputs' existence will be checked later in the
+        `Task.run()` method. So this is the copmlete logic.
+
+        TODO: handle a more arbitrary class of filepath glob *patterns*
+              for task outputs.
+        """
+        inputs = collect_script_inputs(self.inputs)
+        outputs = {k: v.pointer for k, v in self.outputs.items()}
+        script = self.script.format(**{**inputs, **outputs})
+        subprocess.run(script, shell=True, check=True)
+
         return
 
     def _interrupt_cleanup(self):
@@ -147,44 +192,70 @@ class ScriptTask(AbstractTask):
         return
     
 
-def collect_inputs(task, input_dict):
+def collect_function_inputs(input_dict):
     """
-    Given a Task and its dictionary of input Datums,
-    return a dictionary of objects appropriate for the
-    execution of that Task.
+    Given a FunctionTask's dictionary of input Datums,
+    return a dictionary of python objects to be passed as
+    kwargs to the function.
 
-    For example, collect_inputs for a FunctionTask 
-    should return a dictionary of python objects;
-    and collect_inputs for a ScriptTask should return
-    a dictionary of strings.
+    TODO handle *list* inputs (i.e., for a `reduce`-like function)
     """
     result = {}
     os_name = platform.system()
 
-    # Behavior for FunctionTasks
-    if isinstance(task, FunctionTask):
-        for k, v in input_dict.items():
-            # Input is a MemoryDatum
-            if isinstance(v, MemoryDatum):
-                result[k] = v.pointer
-            # Input is a FileDatum
-            elif isinstance(v, FileDatum):
-                if is_valid_filepath(v.pointer, platform=os_name):
-                    # If it points to a pickle, then
-                    # load the pickle
-                    if Path(v.pointer).suffix.lower() == ".pkl":
-                        with open(v.pointer, "rb") as f:
-                            result[k] = pickle.load(f)
-                    # Otherwise, simply return the filepath.
-                    else:
-                        result[k] = v.pointer
-                # Raise an error if the input is not a valid
-                # filepath
+    for k, v in input_dict.items():
+        # Input is a MemoryDatum
+        if isinstance(v, MemoryDatum):
+            result[k] = v.pointer
+        # Input is a FileDatum
+        elif isinstance(v, FileDatum):
+            if is_valid_filepath(v.pointer, platform=os_name):
+                # If it points to a pickle, then
+                # load the pickle
+                if Path(v.pointer).suffix.lower() == ".pkl":
+                    with open(v.pointer, "rb") as f:
+                        result[k] = pickle.load(f)
+                # Otherwise, simply return the filepath.
                 else:
-                    raise ValueError(f"Input filepath {k}: {v.pointer} is ill-formed")
-            # If the input is not a Datum at all, then
-            # we simply provide the python object
-            elif not isinstance(v, AbstractDatum):
-                result[k] = v
+                    result[k] = v.pointer
+            # Raise an error if the input is not a valid
+            # filepath
+            else:
+                raise ValueError(f"Input filepath {k}: {v.pointer} is ill-formed")
+        # If the input is not a Datum at all, then
+        # we simply provide the python object
+        elif not isinstance(v, AbstractDatum):
+            raise ValueError(f"Input {k}: {v} is not a Datum")
 
     return result
+
+
+def collect_script_inputs(input_dict):
+    """
+    Given a ScriptTask's dictionary of input Datums,
+    return a dictionary of strings to be substituted
+    into the script.
+    
+    For now, we require all inputs to be FileDatums.
+
+    TODO handle *list* inputs (i.e., for a `reduce`-like task)
+    """
+    result = {}
+    os_name = platform.system()
+
+    for k, v in input_dict.items():
+        # Input is a FileDatum
+        if isinstance(v, FileDatum):
+            if is_valid_filepath(v.pointer, platform=os_name):
+                result[k] = v.pointer
+            else:
+                raise ValueError(f"Input filepath {k}: {v.pointer} is ill-formed")
+        elif isinstance(v, MemoryDatum):
+            raise ValueError(f"Input {k}: {v} is not a FileDatum")
+        elif not isinstance(v, AbstractDatum):
+            raise ValueError(f"Input {k}: {v} is not a FileDatum")
+
+    return result
+
+
+
