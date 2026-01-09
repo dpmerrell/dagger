@@ -20,7 +20,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 
 from dagger.abstract.helpers import cycle_exists, construct_adj_list 
-from dagger.abstract import TaskState 
+from dagger.abstract.task import TaskState, AbstractTask
 
 class AbstractManager(ABC):
     """
@@ -38,7 +38,7 @@ class AbstractManager(ABC):
     the state of the workflow.
     """
 
-    def __init__(self, end_task):
+    def __init__(self, end_task: AbstractTask):
 
         # Validate that this is a DAG
         self.end_task = end_task
@@ -123,7 +123,7 @@ class AbstractManager(ABC):
         self._rec_initialize_state(self.end_task, set())
         return
 
-    def _rec_initialize_state(self, task, visited):
+    def _rec_initialize_state(self, task: AbstractTask, visited: set):
         """
         Recursively assign workflow Tasks to the 
         workflow algorithm state collections
@@ -154,7 +154,7 @@ class AbstractManager(ABC):
         visited.add(task)
         return
 
-    def _get_finished_tasks(self, running_tasks):
+    def _get_finished_tasks(self, running_tasks: list):
         """
         Given a list of running tasks, return a list
         of those that are COMPLETE or FAILED.
@@ -164,7 +164,7 @@ class AbstractManager(ABC):
                                                            TaskState.FAILED)]
         return finished
 
-    def _wrapup_finished_tasks(self, finished_tasks):
+    def _wrapup_finished_tasks(self, finished_tasks: list):
         """
         Given a list of finished tasks, wrap them up
         and put them in the appropriate set (COMPLETE or FAILED).
@@ -193,7 +193,7 @@ class AbstractManager(ABC):
             self.running.remove(t)
         return
 
-    def _update_ready_tasks(self, finished_tasks):
+    def _update_ready_tasks(self, finished_tasks: list):
         """
         Given a list of recently finished tasks, update
         the list of 'ready' tasks with their children
@@ -213,7 +213,7 @@ class AbstractManager(ABC):
                 self.ready.append(c)
                 self.waiting.remove(c)
         
-    def _launch_ready_tasks(self, ready_tasks):
+    def _launch_ready_tasks(self, ready_tasks: list):
         """
         Given a list of ready tasks, choose
         a subset of them and launch them.
@@ -227,7 +227,7 @@ class AbstractManager(ABC):
             self.running.append(task)
 
     @abstractmethod
-    def _launch_task(self, task):
+    def _launch_task(self, task: AbstractTask):
         """
         Launch a task. For nontrivial settings
         this involves some setup (e.g., creating machinery for 
@@ -236,7 +236,7 @@ class AbstractManager(ABC):
         raise NotImplementedError("Subclasses of `AbstractManager` must implement `_launch_task()`")
 
     @abstractmethod
-    def _wrapup_task(self, task):
+    def _wrapup_task(self, task: AbstractTask):
         """
         Wrap up a task that has finished.
         This may involve tearing down or updating some 
@@ -248,7 +248,7 @@ class AbstractManager(ABC):
         raise NotImplementedError("Subclasses of `AbstractManager` must implement `_wrapup_task()`")
         
     @abstractmethod
-    def _get_running_task_state(self, task):
+    def _get_running_task_state(self, task: AbstractTask) -> TaskState:
         """
         Get the state of a running task.
         For nontrivial settings, this involves
@@ -257,7 +257,7 @@ class AbstractManager(ABC):
         raise NotImplementedError("Subclasses of `AbstractManager` must implement `_get_running_task_state()`")
 
     @abstractmethod
-    def _choose_tasks(self, ready_tasks):
+    def _choose_tasks(self, ready_tasks: list) -> list:
         """
         Given a list of ready tasks, choose a subset of them 
         to launch next.

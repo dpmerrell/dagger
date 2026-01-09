@@ -145,14 +145,14 @@ class AbstractDatum(ABC):
             raise ValueError(f"Datum's pointer is not well-formed: {self.pointer}")
     
     @abstractmethod
-    def _validate_format_logic(self):
+    def _validate_format_logic(self) -> bool:
         """
         Return a bool indicating whether the Datum's
         pointer is well-formed
         """
         raise NotImplementedError("Subclasses of `AbstractDatum` must implement `_validate_format_logic()`")
 
-    def verify_available(self, update=True):
+    def verify_available(self, update=True) -> bool:
         """
         Verify whether the Datum points to data that is 
         available for use. If it is, then set
@@ -171,7 +171,7 @@ class AbstractDatum(ABC):
             return False
     
     @abstractmethod
-    def _verify_available_logic(self):
+    def _verify_available_logic(self) -> bool:
         """
         Return a bool indicating whether the Datum
         points to data that exists.
@@ -196,7 +196,7 @@ class AbstractDatum(ABC):
         """
         raise NotImplementedError("Subclasses of `AbstractDatum` must implement `_clear_logic()`")
 
-    def _verify_quickhash(self, update=False):
+    def _verify_quickhash(self, update=False) -> bool:
         """
         Compute this Datum's quickhash and check whether it
         matches the Datum's stored quickhash.
@@ -212,9 +212,9 @@ class AbstractDatum(ABC):
             return False
 
     @abstractmethod
-    def _quickhash(self):
+    def _quickhash(self) -> int:
         """
-        Return a hashable (e.g., int or str) satisfying the following:
+        Return an int satisfying the following:
         1. Identification: each Datum has a distinct quickhash.
         2. Modification: a Datum's quickhash changes whenever its underlying
                          data is modified.
@@ -239,11 +239,9 @@ class AbstractDatum(ABC):
                     # If so, then mark this available
                     self.state = DatumState.AVAILABLE
                 else:
-                    print(f"\t\t\t{self.pointer} Failed quickhash check!")
                     # If not up-to-date, then we clear the Datum
                     # (this also sets the state to populated)
                     self.clear()
             else:
-                print(f"\t\t\t{self.pointer} Failed `verify_available_logic`!")
                 self.state = DatumState.POPULATED
 

@@ -23,7 +23,7 @@
 """
 
 from dagger.abstract.communicator import DefaultCommunicator
-from dagger.abstract.datum import DatumState
+from dagger.abstract.datum import DatumState, AbstractDatum
 from dagger.abstract import helpers
 
 from abc import ABC, abstractmethod
@@ -59,7 +59,7 @@ class AbstractTask(ABC):
     to be carried out.
 
     A `Task` possesses a unique identifier.
-    Must be hashable.
+    Must be a string.
 
     A `Task` possesses a list of `dependencies`.
     This is itself a list of `Tasks` that must be
@@ -74,7 +74,7 @@ class AbstractTask(ABC):
     communication machinery.
     
     A task has a `quickhash` that exposes modifications to it.
-    The `quickhash` is a hashable computed in a
+    The `quickhash` is an integer computed in a
     way that satisfies these rules:
     * Identification: different Task instances should have
                       different quickhashes
@@ -85,8 +85,10 @@ class AbstractTask(ABC):
     these rules and be inexpensive to compute.
     """
 
-    def __init__(self, identifier, inputs=None, outputs=None, 
-                                   dependencies=None, resources=None):
+    def __init__(self, identifier: str, inputs: dict = None, 
+                                        outputs: dict = None, 
+                                        dependencies: list = None, 
+                                        resources: dict = None):
         """
         Construct a new Task object with
         given identifier and dependencies.
@@ -117,7 +119,7 @@ class AbstractTask(ABC):
         self.quickhash = self._quickhash()
 
     @abstractmethod
-    def _initialize_outputs(self, output_dict):
+    def _initialize_outputs(self, output_dict: dict) -> dict:
         """
         A Task needs to specify how it initializes output
         Datums from a dict of name=>pointer
@@ -148,7 +150,7 @@ class AbstractTask(ABC):
         else:
             self.update_state(TaskState.COMPLETE)
     
-    def is_ready(self):
+    def is_ready(self) -> bool:
         """
         A Task is ready to run iff all of its dependencies
         are complete
@@ -156,7 +158,7 @@ class AbstractTask(ABC):
         return all((d.state == TaskState.COMPLETE for d in self.dependencies))
    
     @abstractmethod
-    def _collect_inputs(self):
+    def _collect_inputs(self) -> dict:
         """
         A method that translates `self.inputs` into the inputs
         for `_run_logic()`.
@@ -168,26 +170,26 @@ class AbstractTask(ABC):
         raise NotImplementedError("Subclasses of AbstractTask must implement `_collect_inputs`")
 
     @abstractmethod
-    def _run_logic(self, collected_inputs):
+    def _run_logic(self, collected_inputs: dict):
         """
         Core logic for executing the computational work.
         """
         raise NotImplementedError("Subclasses of AbstractTask must implement `_run_logic`")
     
-    def update_state(self, new_state):
+    def update_state(self, new_state: DatumState):
         """
         Assign a new value to self.state
         """
         self.state = new_state
         self.communicator.report_state(self)
     
-    def _verify_outputs(self):
+    def _verify_outputs(self) -> bool:
         """
         Verify that all the task's outputs are AVAILABLE.
         """
         return all((out.verify_available(update=True) for out in self.outputs.values()))
 
-    def verify_complete(self):
+    def verify_complete(self) -> bool:
         """
         Verify whether a task is complete;
         if it is, update the Task's state.
@@ -204,7 +206,7 @@ class AbstractTask(ABC):
             self.update_state(TaskState.COMPLETE)
         return self.state == TaskState.COMPLETE
    
-    def _verify_quickhash(self, update=False):
+    def _verify_quickhash(self, update=False) -> bool:
         """
         Compute this Task's quickhash and check whether it
         matches the Task's stored quickhash.
@@ -220,7 +222,7 @@ class AbstractTask(ABC):
             return False
     
     @abstractmethod
-    def _quickhash(self):
+    def _quickhash(self) -> int:
         """
         A Task subclass needs to specify a `quickhash`
         function satisfying the following rules:
@@ -266,13 +268,13 @@ class AbstractTask(ABC):
         """
         raise NotImplementedError("Subclasses of AbstractTask must implement `_fail_cleanup`")
 
-    def __getitem__(self, key):
+    def __getitem__(self, key) -> AbstractDatum:
         """
         Get a Task output by name.
         """
         return self.outputs[key]
 
-    def sync(self, recursive=True, visited=None):
+    def sync(self, recursive=True, visited: set = None):
         """
         Enforce this Task's state to be consistent with
         (a) the state of its dependencies,
@@ -313,11 +315,6 @@ class AbstractTask(ABC):
         # Set this task's state
         deps_complete = all((d.state == TaskState.COMPLETE for d in self.dependencies))
         complete &= deps_complete
-        print(f"{self.identifier} complete?: {complete}")
-        print("\tinputs available:", inputs_available)
-        print("\t\tinput states:", [i.state for i in self.inputs.values()])
-        print("\toutputs available:", outputs_available)
-        print("\tdeps complete:", deps_complete)
         if self.state == TaskState.FAILED:
             self.update_state(TaskState.FAILED)
         elif complete and self._verify_quickhash(update=True):
@@ -326,6 +323,5 @@ class AbstractTask(ABC):
             self.update_state(TaskState.WAITING)
 
         # Mark this task as visited
-        print("SYNCED", self.identifier)
         visited.add(self)
 
