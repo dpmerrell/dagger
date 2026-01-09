@@ -13,7 +13,10 @@ class MinimalTask(AbstractTask):
     def _quickhash(self):
         return self.identifier
 
-    def _run_logic(self):
+    def _collect_inputs(self):
+        return {k: v.pointer for k, v in self.inputs.items()}
+
+    def _run_logic(self, collected_inputs):
         self["output"].populate(f"result of task {self.identifier}")
         return
 
@@ -74,7 +77,7 @@ class ExceptionTask(MinimalTask):
     This task simply raises an exception
     when we run it.
     """
-    def _run_logic(self):
+    def _run_logic(self, collected_inputs):
         raise Exception("Exception Task!")
         return
 
@@ -101,7 +104,7 @@ class InterruptTask(MinimalTask):
     This task simply raises a KeyboardInterrupt
     when we run it.
     """
-    def _run_logic(self):
+    def _run_logic(self, collected_inputs):
         raise KeyboardInterrupt("Keyboard interrupt!")
         return
 

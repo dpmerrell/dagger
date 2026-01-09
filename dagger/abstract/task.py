@@ -136,7 +136,8 @@ class AbstractTask(ABC):
             raise RuntimeError(f"Task {self.identifier} is not ready to run.")
         self.update_state(TaskState.RUNNING)
         try:
-            self._run_logic()
+            collected_inputs = self._collect_inputs()
+            self._run_logic(collected_inputs)
             if not self._verify_outputs():
                 raise RuntimeError(f"Task {self.identifier} ran, but is missing outputs.")
         except KeyboardInterrupt:
@@ -153,9 +154,21 @@ class AbstractTask(ABC):
         are complete
         """
         return all((d.state == TaskState.COMPLETE for d in self.dependencies))
-    
+   
     @abstractmethod
-    def _run_logic(self):
+    def _collect_inputs(self):
+        """
+        A method that translates `self.inputs` into the inputs
+        for `_run_logic()`.
+
+        For example, these could be python objects for some
+        Task implementations; or filepaths for other 
+        Task implementations.
+        """
+        raise NotImplementedError("Subclasses of AbstractTask must implement `_collect_inputs`")
+
+    @abstractmethod
+    def _run_logic(self, collected_inputs):
         """
         Core logic for executing the computational work.
         """
