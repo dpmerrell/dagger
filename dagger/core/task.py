@@ -17,6 +17,7 @@ from dagger.core import FileDatum, MemoryDatum
 from pathvalidate import is_valid_filepath
 
 from pathlib import Path
+from copy import copy
 import subprocess
 import platform
 import inspect
@@ -172,7 +173,7 @@ class ScriptTask(AbstractTask):
 
         if not isinstance(script, str):
             raise ValueError("`script` must be a string")
-        self.script = script
+        self.script = copy(script)
 
         super().__init__(identifier, **kwargs)
         return
@@ -199,7 +200,7 @@ class ScriptTask(AbstractTask):
         return result
 
     def _quickhash(self):
-        return hash((id(self), self.script))
+        return hash(self.script)
 
     def _run_logic(self, collected_inputs):
         """
@@ -229,7 +230,7 @@ class ScriptTask(AbstractTask):
     def _fail_cleanup(self):
         return
     
-    def collect_inputs(self):
+    def _collect_inputs(self):
         """
         Given a ScriptTask's dictionary of `inputs`,
         return a dictionary of strings to be substituted
