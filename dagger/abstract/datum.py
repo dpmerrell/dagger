@@ -51,8 +51,8 @@
     to be defined for each pair (task, datum) of types that appears in
     a workflow.
 
-    The Datum's `parent` plays basically no role in any of this
-    lifecycle. `parent` just enables bookkeeping; it helps downstream tasks
+    The Datum's `parents` play basically no role in any of this
+    lifecycle. `parents` just enable bookkeeping; they help downstream tasks
     identify upstream tasks from their inputs.
 
     The Datum stores a `quickhash`, which is a hashable representing the
@@ -114,7 +114,7 @@ class AbstractDatum(ABC):
         the underlying data is already available.
         """
         self.state = DatumState.EMPTY
-        self.parent = parent
+        self.parents = [parent]
         self.pointer = None
         self.quickhash = None
         if "pointer" in kwargs.keys():

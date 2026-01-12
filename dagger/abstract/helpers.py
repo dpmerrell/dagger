@@ -20,7 +20,7 @@ def collect_dependencies(input_dict, dependency_ls):
     (A) a dictionary of input Datums and
     (B) a list of explicit Task dependencies.
     """
-    parents = [inp.parent for inp in input_dict.values()]
+    parents = [p for inp in input_dict.values() for p in inp.parents]
     deps = set(dependency_ls) | set((p for p in parents if p is not None))
     return list(deps)
 
