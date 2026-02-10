@@ -24,6 +24,7 @@
 
 from dagger.abstract.communicator import DefaultCommunicator
 from dagger.abstract.datum import DatumState, AbstractDatum
+from dagger.abstract.input_converters import InputForm, converter_registry
 from dagger.abstract import helpers
 
 from abc import ABC, abstractmethod
@@ -85,9 +86,11 @@ class AbstractTask(ABC):
     these rules and be inexpensive to compute.
     """
 
-    def __init__(self, identifier: str, inputs: dict = None, 
-                                        outputs: dict = None, 
-                                        dependencies: list = None, 
+    input_form = None
+
+    def __init__(self, identifier: str, inputs: dict = None,
+                                        outputs: dict = None,
+                                        dependencies: list = None,
                                         resources: dict = None):
         """
         Construct a new Task object with
@@ -157,17 +160,22 @@ class AbstractTask(ABC):
         """
         return all((d.state == TaskState.COMPLETE for d in self.dependencies))
    
-    @abstractmethod
     def _collect_inputs(self) -> dict:
         """
-        A method that translates `self.inputs` into the inputs
-        for `_run_logic()`.
+        Translate `self.inputs` into the form expected by
+        `_run_logic()`.
 
-        For example, these could be python objects for some
-        Task implementations; or filepaths for other 
-        Task implementations.
+        By default, dispatches through the converter registry
+        using `self.input_form`. Subclasses may override for
+        custom logic.
         """
-        raise NotImplementedError("Subclasses of AbstractTask must implement `_collect_inputs`")
+        if self.input_form is None:
+            raise NotImplementedError(
+                f"{type(self).__name__} must either set `input_form` "
+                f"or override `_collect_inputs`"
+            )
+        return {k: converter_registry.convert(v, self.input_form)
+                for k, v in self.inputs.items()}
 
     @abstractmethod
     def _run_logic(self, collected_inputs: dict):
