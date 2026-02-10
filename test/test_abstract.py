@@ -202,10 +202,11 @@ def test_manager_initialization():
     assert t2.state == TaskState.COMPLETE
     assert t3.state == TaskState.COMPLETE
 
-    # Setting one task to FAILED should
-    # result in its downstream tasks reverting
-    # to WAITING
-    t2.update_state(TaskState.FAILED)
+    # Forcibly mark one task as FAILED (bypassing the state machine,
+    # since COMPLETE → FAILED is not a valid transition).
+    # This simulates inspecting behaviour of initialize_workflow_state
+    # when a task is already in FAILED state.
+    t2._state = TaskState.FAILED
     m.initialize_workflow_state()
     assert t0.state == TaskState.COMPLETE
     assert t1.state == TaskState.COMPLETE

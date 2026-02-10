@@ -88,6 +88,14 @@ class DatumState(Enum):
     POPULATED = 1
     AVAILABLE = 2
 
+
+_DATUM_TRANSITIONS = {
+    DatumState.EMPTY:     {DatumState.POPULATED},
+    DatumState.POPULATED: {DatumState.EMPTY, DatumState.AVAILABLE},
+    DatumState.AVAILABLE: {DatumState.EMPTY, DatumState.POPULATED},
+}
+
+
 class AbstractDatum(ABC):
     """
     A class representing a piece of data passed
@@ -98,6 +106,20 @@ class AbstractDatum(ABC):
     a Task output can be constructed and passed to
     other tasks before that Task has even completed.
     """
+
+    @property
+    def state(self):
+        return self._state
+
+    @state.setter
+    def state(self, new_state):
+        if hasattr(self, '_state') and new_state != self._state:
+            if new_state not in _DATUM_TRANSITIONS[self._state]:
+                raise ValueError(
+                    f"Invalid DatumState transition: "
+                    f"{self._state.name} → {new_state.name}"
+                )
+        self._state = new_state
 
     def __init__(self, parent=None, **kwargs):
         """

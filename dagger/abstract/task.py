@@ -37,21 +37,33 @@ class TaskState(Enum):
     at any given time:
 
            ------------> --> COMPLETE
-          /             / 
-    WAITING --> RUNNING 
+          /             /
+    WAITING --> RUNNING
                         \
                          --> FAILED
 
-    WAITING may transition to COMPLETE via .verify_complete()
-    WAITING transitions to RUNNING via .run()
-    RUNNING transitions to COMPLETE if .run() finishes
-    RUNNING transitions to FAILED if .run() raises an exception
-    RUNNING transitions to WAITING via .interrupt()
+    WAITING  → RUNNING   via .run()
+    WAITING  → COMPLETE  via .sync() (outputs already exist)
+    RUNNING  → COMPLETE  when .run() finishes successfully
+    RUNNING  → FAILED    when .run() raises an exception
+    RUNNING  → WAITING   via .interrupt()
+    COMPLETE → WAITING   via .sync() (inputs changed / stale)
+    FAILED   → WAITING   via .sync() (retry after fix)
+
+    Self-transitions (same → same) are always allowed.
     """
     WAITING = 0
     RUNNING = 1
     COMPLETE = 2
     FAILED = 3
+
+
+_TASK_TRANSITIONS = {
+    TaskState.WAITING:  {TaskState.RUNNING, TaskState.COMPLETE},
+    TaskState.RUNNING:  {TaskState.COMPLETE, TaskState.FAILED, TaskState.WAITING},
+    TaskState.COMPLETE: {TaskState.WAITING},
+    TaskState.FAILED:   {TaskState.WAITING},
+}
 
 
 class AbstractTask(ABC):
@@ -87,6 +99,20 @@ class AbstractTask(ABC):
     """
 
     input_form = None
+
+    @property
+    def state(self):
+        return self._state
+
+    @state.setter
+    def state(self, new_state):
+        if hasattr(self, '_state') and new_state != self._state:
+            if new_state not in _TASK_TRANSITIONS[self._state]:
+                raise ValueError(
+                    f"Invalid TaskState transition: "
+                    f"{self._state.name} → {new_state.name}"
+                )
+        self._state = new_state
 
     def __init__(self, identifier: str, inputs: dict = None,
                                         outputs: dict = None,
@@ -197,23 +223,6 @@ class AbstractTask(ABC):
         """
         return all((out.verify_available(update=True) for out in self.outputs.values()))
 
-    def verify_complete(self) -> bool:
-        """
-        Verify whether a task is complete;
-        if it is, update the Task's state.
-        Return a bool indicating whether the 
-        task is complete.
-        """
-        deps_complete = all((d.state == TaskState.COMPLETE for d in self.dependencies))
-        task_uptodate = self._verify_quickhash(update=True)
-        inp_uptodate = all((inp._verify_quickhash(update=True) for inp in self.inputs.values())) 
-        outputs_complete = self._verify_outputs() 
-        complete = all((deps_complete, task_uptodate, inp_uptodate, outputs_complete))
-
-        if complete:
-            self.update_state(TaskState.COMPLETE)
-        return self.state == TaskState.COMPLETE
-   
     def _verify_quickhash(self, update=False) -> bool:
         """
         Compute this Task's quickhash and check whether it
