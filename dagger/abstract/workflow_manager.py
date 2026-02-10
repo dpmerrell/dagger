@@ -64,7 +64,7 @@ class AbstractManager(ABC):
         are no circular dependencies.
         """
         if cycle_exists(self.end_task):
-            raise ValueError("Workflow ending at {self.end_task.identifier} contains a cycle!")
+            raise ValueError(f"Workflow ending at {self.end_task.identifier} contains a cycle!")
 
     def run(self, sync=True):
         """
@@ -184,7 +184,7 @@ class AbstractManager(ABC):
             else:
                 t.update_state(TaskState.WAITING)
                 self.waiting.add(t)
-                raise ValueError("Task {t} with state {t_s} is neither COMPLETE nor FAILED.")
+                raise ValueError(f"Task {t} with state {t_s} is neither COMPLETE nor FAILED.")
 
             # Perform any additional wrapup as necessary.
             self._wrapup_task(t)

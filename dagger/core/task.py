@@ -117,7 +117,7 @@ class FunctionTask(AbstractTask):
         return
 
     def _interrupt_cleanup(self):
-        for k, datum in self.outputs:
+        for k, datum in self.outputs.items():
             datum.clear()
         return
 
@@ -195,7 +195,7 @@ class ScriptTask(AbstractTask):
                 result[k] = FileDatum(parent=self,
                                       pointer=v)
             else:
-                raise ValueError(f"Can't construct output '{k}': {v} for ScriptTask {self.identifer}. {v} is not a valid filepath.")
+                raise ValueError(f"Can't construct output '{k}': {v} for ScriptTask {self.identifier}. {v} is not a valid filepath.")
 
         return result
 

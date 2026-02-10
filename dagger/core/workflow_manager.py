@@ -32,7 +32,7 @@ class ProcessCommunicator(AbstractCommunicator):
         self.state_value = state_value
         return
 
-    def _report_state(self, task):
+    def report_state(self, task):
         """
         Update the state in shared memory,
         using this Task's state.

@@ -197,8 +197,8 @@ class AbstractTask(ABC):
         task is complete.
         """
         deps_complete = all((d.state == TaskState.COMPLETE for d in self.dependencies))
-        task_uptodate = self._update_quickhash()
-        inp_uptodate = all((inp._update_quickhash() for inp in self.inputs.values())) 
+        task_uptodate = self._verify_quickhash(update=True)
+        inp_uptodate = all((inp._verify_quickhash(update=True) for inp in self.inputs.values())) 
         outputs_complete = self._verify_outputs() 
         complete = all((deps_complete, task_uptodate, inp_uptodate, outputs_complete))
 
